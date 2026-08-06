@@ -90,15 +90,33 @@ uses forgot-password. The web app gets no signal and must not imply delivery suc
 **The API always sends it, always as a `boolean`** — `MeService` coerces the nullable column
 with `?? false`, so it is never absent and never `null`.
 
-### `POST /api/me/password` — how the flag clears
+### Clearing the flag — two routes, and why there are two
 
-Unchanged shape: `{ currentPassword, newPassword }` (new password 8–128). A wrong current
-password is a `400` with `"Current password is incorrect"`. On success the API clears
-`mustResetPassword` itself, so the web app learns the new state by **re-reading `/me`**, never
-by assuming it locally.
+| Route | Body | Who calls it |
+|---|---|---|
+| `POST /api/me/password` | `{ currentPassword, newPassword }` | the Profile screen, any ordinary password change |
+| `POST /api/me/password/initial` | `{ newPassword }` | **only** the forced first-login screen |
 
-The emailed reset route (better-auth's `onPasswordReset`) clears the flag too, so a
-`temporary` user who uses the link instead of the in-app screen is also unblocked.
+New password is 8–128 on both. A wrong current password on the first is a `400`
+`"Current password is incorrect"`. On success either route clears `mustResetPassword` itself,
+so the web app learns the new state by **re-reading `/me`**, never by assuming it locally. The
+emailed reset route (better-auth's `onPasswordReset`) clears it too, so a `temporary` user who
+uses the link instead of the in-app screen is also unblocked.
+
+**`/initial` omits `currentPassword` deliberately, and that is only safe because of its gate.**
+The user typed the temporary password to reach the screen seconds earlier, so asking again is
+friction without assurance. But `currentPassword` on the ordinary route exists to stop a stolen
+session rotating the password, so `/initial` must never be reachable outside the first-login
+state. It therefore:
+
+- refuses with `400` unless the caller's `mustResetPassword` is true,
+- reads that flag from the **database**, not from the actor — the flag is the entire
+  authorisation for skipping the credential check, so it is never taken from a value that
+  arrived on the request,
+- clears it on success, making the route single-use.
+
+Widen that gate and it becomes "rotate any password holding only a session". Accepted tradeoff:
+during the first-login window, a stolen session can take the account permanently.
 
 ### The one rule both sides must agree on
 
@@ -140,10 +158,10 @@ a fork.
   password field, defaulting to `set`. `invite` **hides the field, skips the length validation,
   and prunes `password` from the payload** — so a password typed before switching to `invite` is
   never transmitted. `temporary` relabels the field and explains the forced change.
-- **Forced first-login screen** (`src/components/auth/ForcedPasswordReset.tsx`): current + new +
-  confirm, composed from the same primitives the reset-password screen uses. It has **no route
-  of its own**. A log-out escape means a user who has lost the temporary password is never
-  trapped.
+- **Forced first-login screen** (`src/components/auth/ForcedPasswordReset.tsx`): new + confirm —
+  **no current-password field** — posting to `/me/password/initial`. Composed from the same
+  primitives the reset-password screen uses, and it has **no route of its own**. A log-out escape
+  means a user who has lost the temporary password is never trapped.
 - **The gate** (`src/components/auth/ForcedPasswordResetGate.tsx`): a layout route between
   `ProtectedRoute` (auth) and `DashboardLayout` (shell), wrapping the catch-all too, so there is
   no URL a flagged user can navigate around to. It reads `useMe()`:
