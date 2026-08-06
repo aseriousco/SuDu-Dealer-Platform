@@ -1,0 +1,9 @@
+# The two application repos are independent git repos with their own remotes.
+# They are checked out inside this folder for convenience — so that one Claude
+# Code session, rooted here, can see both sides of a cross-repo feature — but
+# their history is NOT tracked here. Clone them yourself; see CLAUDE.md.
+sudu-dealer-api/
+sudu-dealer-web/
+
+.DS_Store
+*.log

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(node -v)",
+      "Bash(node --version)",
+      "Bash(nvm use:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run test:*)",
+      "Bash(npm run lint:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm run start:dev:*)",
+      "Bash(npm run prisma:generate:*)",
+      "Bash(npm test:*)",
+      "Bash(npm ci:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vitest:*)",
+      "Bash(npx jest:*)",
+      "Bash(npx prisma validate:*)",
+      "Bash(npx prisma format:*)",
+      "Bash(docker compose up -d:*)",
+      "Bash(docker compose ps:*)",
+      "Bash(docker compose logs:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git remote -v)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(curl -s http://localhost:*)",
+      "Bash(curl -sS http://localhost:*)",
+      "Bash(curl -i http://localhost:*)",
+      "Bash(./scripts/dev-db.sh)",
+      "Bash(./scripts/dev-api.sh)",
+      "Bash(./scripts/dev-web.sh)"
+    ],
+    "deny": [
+      "Read(./sudu-dealer-api/.env)",
+      "Read(./sudu-dealer-web/.env)",
+      "Bash(git push:*)",
+      "Bash(npm publish:*)",
+      "Bash(npx prisma migrate reset:*)",
+      "Bash(npm run prisma:migrate -- --force:*)",
+      "Bash(docker compose down -v:*)"
+    ]
+  }
+}

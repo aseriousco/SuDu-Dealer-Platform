@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dealer-web",
+      "runtimeExecutable": "./scripts/dev-web.sh",
+      "runtimeArgs": [],
+      "port": 5173,
+      "autoPort": false
+    },
+    {
+      "name": "dealer-api",
+      "runtimeExecutable": "./scripts/dev-api.sh",
+      "runtimeArgs": [],
+      "port": 3001,
+      "autoPort": false
+    }
+  ]
+}
