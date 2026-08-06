@@ -24,9 +24,10 @@ describe.
 
 Skipping the parent spec is how the two halves get designed independently. That has
 already happened twice: `2026-07-27-web-admin-screens.md` is a *web* plan filed in the
-**API** repo, and `user-onboarding-modes` exists as two loosely-related plans
+**API** repo, and `user-onboarding-modes` was written as two loosely-related plans
 (`2026-08-05-…-api.md`, `2026-08-06-…-web.md`) with nothing above them stating the
-contract they share.
+contract they share — since backfilled as
+[`specs/2026-08-06-user-onboarding-modes-design.md`](./specs/2026-08-06-user-onboarding-modes-design.md).
 
 Single-repo work needs no parent spec. Keep writing those plans exactly where they
 already go.

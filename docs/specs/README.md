@@ -55,12 +55,14 @@ Anything unresolved. Empty by the time the status is `approved`.
 
 ## Backfill candidates
 
-Two features shipped without a parent spec and could use one written after the fact:
+One feature still shipped without a parent spec and could use one written after the fact:
 
-- **`user-onboarding-modes`** — plans exist on both sides
-  (`2026-08-05-…-api.md`, `2026-08-06-…-web.md`) with no document stating the contract
-  they share.
 - **`web-admin-screens`** — `2026-07-27-web-admin-screens.md` is a *web* plan currently
   filed in the **API** repo.
 
-Neither is urgent. Worth doing the next time either area is touched.
+Not urgent. Worth doing the next time that area is touched.
+
+**Done:** `user-onboarding-modes` was backfilled on 2026-08-06 —
+[`2026-08-06-user-onboarding-modes-design.md`](./2026-08-06-user-onboarding-modes-design.md),
+written from the merged API code rather than from either plan, with both plans repointed
+at it.
