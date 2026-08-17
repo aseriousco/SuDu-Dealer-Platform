@@ -47,7 +47,7 @@ changes, so each is written down rather than absorbed silently.
 | 2 | Provisioned tenants have **no** per-tenant subdomain | user, 2026-08-11 — "it doesn't yet" | `dealer_client.slug` is `null`; no UI may promise a `{slug}.mes.sudu.ai` URL |
 | 3 | Initial passwords are **fixed**, told to the dealer, changed by the end user in SaaS | user, 2026-08-11 | A predictable initial credential is an accepted risk window |
 | 4 | We are issued a registered `ServiceIdentity` with scopes `tenant:create`, `job:read`, `job:retry` | **unconfirmed — ops dependency** | Nothing works. There is no public API to self-register; see [Operational prerequisites](#operational-prerequisites) |
-| 5 | A successfully provisioned tenant's claim lands **`ACTIVE`** | **assumed, needs your yes** | See below |
+| 5 | A successfully provisioned tenant's claim lands **`ACTIVE`** | user, 2026-08-11 | Spec B makes this policy-driven rather than constant; see below |
 
 ### On assumption 1 — the visibility asymmetry
 
@@ -65,7 +65,7 @@ govern it cannot see. `GET /api/admin/tenant-provisioning-requests` exists in th
 specifically to close that hole from the local side — it reads our own table, not the
 registry, so it is correct regardless of assumption 1.
 
-### On assumption 5 — why `ACTIVE`
+### On assumption 5 — why `ACTIVE`, and why it must not be a constant
 
 `getOwnedOrThrow()` filters on `status: 'ACTIVE'`, and its comment is explicit that this
 is part of the security control rather than a filter convenience. A `PENDING` claim cannot
@@ -74,11 +74,22 @@ they cannot touch until an admin acts.
 
 `PENDING` exists to verify an *assertion* — "this pre-existing tenant is mine". Provisioning
 makes no assertion: our own API created the tenant on the dealer's behalf, so ownership is
-established by construction and there is nothing for an admin to verify.
+established by construction and there is nothing for an admin to verify. With no policy
+engine in this spec, `ACTIVE` is the only state that makes the feature work standalone.
 
-Spec B then places its approval gate **in front of** provisioning rather than behind it,
-which is also where the quota check belongs — the point is to decide whether expensive
-infrastructure gets created at all, not to withhold it after the money is spent.
+**Spec B turns this into a decision.** Confirmed 2026-08-11: once quota and approval config
+exist, the landing status is computed from the dealer's remaining tenant allowance — within
+allowance lands `ACTIVE`, over it lands `PENDING` for admin approval. That is the soft-block
+in concrete terms: exceeding the limit does not refuse the request, it downgrades the
+outcome. So the quota check runs *before* provisioning, but its verdict is applied *after*,
+as the claim status.
+
+The implementation consequence is load-bearing for this spec, not just B's: **the landing
+status must be one resolved value at a single seam, never a `status: 'ACTIVE'` literal
+inline in the completion write.** Spec A resolves it to a constant `ACTIVE`; spec B replaces
+that resolution with a policy call and touches nothing else. Hardcoding it means B has to
+unpick the completion path — which is the part that must stay correct, because it is what
+writes the ownership record.
 
 ## Contract
 
@@ -398,9 +409,15 @@ tenantId          ← job envelope bladex_tenant_id   (string)
 slug              ← null                            (assumption 2)
 ownerMemberNodeId ← request.ownerMemberNodeId
 label             ← request.clientName
-status            ← ACTIVE                          (assumption 5)
-onboardedAt       ← now
+status            ← resolveLandingStatus(request)   (assumption 5 — see below)
+onboardedAt       ← now when ACTIVE, null when PENDING
 ```
+
+`resolveLandingStatus()` is a named seam, not decoration. In this spec its whole body
+returns `ACTIVE`. Spec B replaces that body with the quota verdict and changes nothing else
+in the completion path. `onboardedAt` follows from it: `DealerClientService.activate` sets
+that timestamp at the moment of approval, so a claim landing `PENDING` must leave it null
+or the two paths disagree about what "onboarded" means.
 
 If that insert hits the `tenantId` unique constraint, the tenant is already claimed. Do not
 create a duplicate: if the existing row belongs to the same org, link it and mark
@@ -540,7 +557,8 @@ Named explicitly so the boundary is reviewable:
 
 - **Spec B — tenant mode, quota, approval policy.** Demo/test vs live; go-live conversion;
   per-dealer creation limits; the soft-block "Tenant Creation Limit Passed" state; approval
-  toggles for create and for go-live; admin bypass and limit raising.
+  toggles for create and for go-live; admin bypass and limit raising. It also takes over
+  `resolveLandingStatus()`, which this spec leaves as a constant `ACTIVE`.
 - **Spec C — reassign tenant ↔ dealer.** Moving a tenant between orgs. Non-trivial because
   `sale_event` is append-only and FK'd to `dealer_client`, so past attribution follows the
   row unless designed against.
@@ -551,13 +569,12 @@ Named explicitly so the boundary is reviewable:
 
 ## Open questions
 
-1. **Assumption 5 — claims land `ACTIVE`.** Reasoned above and needs an explicit yes.
-2. **Typical successful job duration.** Unknown, and it sets both the web poll interval and
+1. **Typical successful job duration.** Unknown, and it sets both the web poll interval and
    the reconcile staleness cutoff. 15 minutes is inherited from `CreditReload` and is a
    guess here. Measure against dev before fixing it.
-3. **Which fixed initial passwords, and how are they configured?** Assumption 3 settles the
+2. **Which fixed initial passwords, and how are they configured?** Assumption 3 settles the
    policy but not the mechanism: the orchestrator's default is `{account}@123!`, whereas
    `password_secret_ref` requires an env var to already exist on the *orchestrator's
    worker*. If the fixed passwords come from secret refs, someone must set them there, and
    this spec needs their names.
-4. **Prod base URL** (also prerequisite 4).
+3. **Prod base URL** (also prerequisite 4).
