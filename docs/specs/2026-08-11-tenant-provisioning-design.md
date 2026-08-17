@@ -3,7 +3,7 @@
 **Status:** draft
 **Repos:** sudu-dealer-api · sudu-dealer-web
 **Branches:** `feat/tenant-management` (both) · `docs/tenant-management-cross-repo-spec` (workspace root)
-**Plans:** api → *not yet written* · web → *not yet written*
+**Plans:** api → [`sudu-dealer-api/docs/superpowers/plans/2026-08-11-tenant-provisioning-api.md`](../../sudu-dealer-api/docs/superpowers/plans/2026-08-11-tenant-provisioning-api.md) · web → [`sudu-dealer-web/docs/superpowers/plans/2026-08-11-tenant-provisioning-web.md`](../../sudu-dealer-web/docs/superpowers/plans/2026-08-11-tenant-provisioning-web.md)
 **Upstream contract:** [`../sudu-tenant-orchestrator-api-handoff-2026-08-06.md`](../sudu-tenant-orchestrator-api-handoff-2026-08-06.md)
 
 > **First of three.** "Tenant management" as scoped on 2026-08-11 covers five subsystems.
@@ -459,7 +459,7 @@ Upstream failures never surface raw. Mapping:
 | `401` | JWT invalid or unknown identity | `502`, logged as a configuration fault |
 | `403` | Missing scope | `502`, logged as a configuration fault |
 | `409` on submit | Idempotency key reused with a different body | `500` — impossible unless we generated a duplicate key |
-| `409` on retry | Job is not in `failed` state | `409` passthrough with a clear message |
+| `409` on retry | Job is not in `failed` state | Unreachable in normal operation — we reject a non-`FAILED` row with our own `409` *before* calling upstream. If it still occurs, our state and the orchestrator's disagree, so it is a `502` |
 | `404` on poll | Unknown job | Row → `FAILED`, reason records the lost job |
 | timeout / network | Indeterminate | Row **stays `PENDING`**. Never `FAILED` |
 
