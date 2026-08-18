@@ -147,7 +147,7 @@ out of it:
 | `201 Created` | Row written, orchestrator acknowledged, `jobId` persisted | resource, `handoff: "ACCEPTED"` |
 | `202 Accepted` | Row written, orchestrator call failed indeterminately | resource, `handoff: "UNCONFIRMED"`, `jobId` still null |
 | `503 Service Unavailable` | Orchestrator not configured — nothing sent, **nothing written** | error only |
-| `4xx` | Validation, authorization, or a definite upstream refusal | error only |
+| `4xx` | Validation or authorization — reached **before** the write | error only |
 
 `202` is not a softened error; it is what actually happened. We accepted the request and
 durably recorded it, and the job's fate is genuinely unknown — which is the same state the
@@ -155,6 +155,11 @@ row is in after any indeterminate failure, and which advance-on-read and `reconc
 resolve. Returning `502` instead forces every client to encode the knowledge that *this
 endpoint's* `502` is special, and the alternative — assuming a `5xx` means nothing was
 created — is a double-provision.
+
+Note what the `4xx` row does *not* say. Every upstream refusal is reached **after** the write,
+so none of them can return `4xx` without breaking the guarantee — they are `202`, exactly like
+any other post-write fault. Only validation and authorization run before the row exists. A
+future post-write `4xx` on this endpoint would be a defect, not an extension.
 
 **`503` when unconfigured is a separate case on purpose.** With no ES256 key nothing is
 sent upstream at all, so the request is not indeterminate: we know it never left. The
