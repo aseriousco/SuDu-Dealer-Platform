@@ -1,6 +1,6 @@
 # Tenant Provisioning — cross-repo design
 
-**Status:** draft
+**Status:** draft · **amended 2026-08-18** — see [Submit outcomes](#submit-outcomes)
 **Repos:** sudu-dealer-api · sudu-dealer-web
 **Branches:** `feat/tenant-management` (both) · `docs/tenant-management-cross-repo-spec` (workspace root)
 **Plans:** api → [`sudu-dealer-api/docs/superpowers/plans/2026-08-11-tenant-provisioning-api.md`](../../sudu-dealer-api/docs/superpowers/plans/2026-08-11-tenant-provisioning-api.md) · web → [`sudu-dealer-web/docs/superpowers/plans/2026-08-11-tenant-provisioning-web.md`](../../sudu-dealer-web/docs/superpowers/plans/2026-08-11-tenant-provisioning-web.md)
@@ -9,6 +9,14 @@
 > **First of three.** "Tenant management" as scoped on 2026-08-11 covers five subsystems.
 > This spec is **A — provisioning** only. B (tenant mode, quota, approval policy) and C
 > (reassign tenant ↔ dealer) get their own specs. See [Out of scope](#out-of-scope).
+
+> **Amended 2026-08-18 — the submit response.** The original contract returned `201` on
+> success and let an orchestrator fault propagate as a `502`, which told the caller "nothing
+> happened" at the one moment that was untrue: the row had already been written. Both open
+> PRs — [`sudu-dealer-api#18`](https://github.com/aseriousco/sudu-dealer-api/pull/18) and
+> [`sudu-dealer-web#19`](https://github.com/aseriousco/sudu-dealer-web/pull/19) — implement
+> the **original** contract, and the web PR carries a client-side workaround for it.
+> [Submit outcomes](#submit-outcomes) is the replacement and is **not yet implemented**.
 
 ## Problem
 
@@ -120,9 +128,48 @@ Org actors only. A platform actor gets `403` (they do not own clients — same r
 }
 ```
 
-`201` with a provisioning-request resource (below). Every field is `forbidNonWhitelisted`
-— the orchestrator rejects unknown fields, and we reject them earlier so a typo is a `400`
-here rather than a confusing failure three services away.
+Every field is `forbidNonWhitelisted` — the orchestrator rejects unknown fields, and we
+reject them earlier so a typo is a `400` here rather than a confusing failure three services
+away.
+
+#### Submit outcomes
+
+The row is written **before** the orchestrator is called, so "the call failed" and "nothing
+was created" are different facts. The response distinguishes them, and one guarantee falls
+out of it:
+
+> **If the row was written, the caller gets a 2xx carrying its id. Any error status means
+> nothing was written.**
+
+| Response | When | Body |
+|---|---|---|
+| `201 Created` | Row written, orchestrator acknowledged, `jobId` persisted | resource, `handoff: "ACCEPTED"` |
+| `202 Accepted` | Row written, orchestrator call failed indeterminately | resource, `handoff: "UNCONFIRMED"`, `jobId` still null |
+| `503 Service Unavailable` | Orchestrator not configured — nothing sent, **nothing written** | error only |
+| `4xx` | Validation, authorization, or a definite upstream refusal | error only |
+
+`202` is not a softened error; it is what actually happened. We accepted the request and
+durably recorded it, and the job's fate is genuinely unknown — which is the same state the
+row is in after any indeterminate failure, and which advance-on-read and `reconcile` already
+resolve. Returning `502` instead forces every client to encode the knowledge that *this
+endpoint's* `502` is special, and the alternative — assuming a `5xx` means nothing was
+created — is a double-provision.
+
+**`503` when unconfigured is a separate case on purpose.** With no ES256 key nothing is
+sent upstream at all, so the request is not indeterminate: we know it never left. The
+configuration check therefore runs **before** the row is written, so an unconfigured
+environment strands nothing for `reconcile` to chase. This also makes the pre-launch state
+(see [Operational prerequisites](#operational-prerequisites)) behave sanely rather than
+minting a `PENDING` row per attempt.
+
+**The cost, stated plainly:** an orchestrator outage now returns `2xx`, so it no longer
+shows up in HTTP error-rate metrics. The service layer must emit a structured
+error log naming the request `id` and `requestRef` on every `UNCONFIRMED` handoff, and
+alerting keys off that rather than off the status code.
+
+**Deploy order is API first.** A new web against an old API would read the old `502` as a
+definite refusal and re-enable the submit button — the exact double-provision this exists to
+prevent. The reverse is safe: an old web reads `.id` off a `2xx` and never notices.
 
 **`clientName` is truncated to 20 characters by BladeX** for `tenantName`/`linkman`. We do
 not truncate — we warn in the UI, because silently sending a different name than the dealer
@@ -145,6 +192,7 @@ and advances the row before responding. See [Data flow](#data-flow).
 {
   "id": "uuid",
   "status": "PENDING",              // PENDING | SUCCEEDED | FAILED
+  "handoff": "ACCEPTED",            // ACCEPTED | UNCONFIRMED — derived, see below
   "clientName": "Example Manufacturing Sdn Bhd",
   "packageType": "WMS",
   "accountingType": "SQL",
@@ -158,9 +206,17 @@ and advances the row before responding. See [Data flow](#data-flow).
 }
 ```
 
-`jobId`, `requestRef`, and `idempotencyKey` are **internal orchestration handles and are
-not exposed on the dealer resource.** The admin resource adds `jobId` and `requestRef` for
-support. Nothing exposes `idempotencyKey`.
+`handoff` is **derived, never stored**: `jobId === null ? 'UNCONFIRMED' : 'ACCEPTED'`. No
+column, no migration. It appears on every view rather than only on the submit response,
+which buys a second use for free — once `reconcile` or advance-on-read recovers the job id
+through `findJobIdByRequestRef`, the field flips to `ACCEPTED` on its own, so the status
+page can say "still confirming this reached the provisioner" and then stop saying it without
+anyone writing state to make that true.
+
+It is the dealer-safe projection of "do we hold a job id". `jobId`, `requestRef`, and
+`idempotencyKey` are **internal orchestration handles and are not exposed on the dealer
+resource.** The admin resource adds `jobId` and `requestRef` for support. Nothing exposes
+`idempotencyKey`.
 
 `tenantId` is a **string**, always. BladeX ids exceed `Number.MAX_SAFE_INTEGER`.
 
@@ -377,14 +433,21 @@ the audit write hiccuped.
 ### Submit
 
 1. Validate the DTO. Resolve and authorize `ownerMemberNodeId`.
-2. Generate `requestRef` (`dealer-<uuid>`) and `idempotencyKey` (uuid).
-3. **Write the request row `PENDING`.** Before any network call.
-4. `POST /v1/provisioning/tenant-jobs` with `Idempotency-Key`.
-5. Persist `jobId` from the receipt.
-6. Return the resource.
+2. **Check the orchestrator is configured.** If not, `503` and stop — before step 4, so
+   nothing is written for a call that cannot happen.
+3. Generate `requestRef` (`dealer-<uuid>`) and `idempotencyKey` (uuid).
+4. **Write the request row `PENDING`.** Before any network call.
+5. `POST /v1/provisioning/tenant-jobs` with `Idempotency-Key`.
+6. Persist `jobId` from the receipt.
+7. Return `201` with the resource.
 
-If step 4 or 5 throws, the row stays `PENDING` with `jobId` possibly null. It is **never**
-marked `FAILED` on an indeterminate error — the job may well be running. Reconcile owns it.
+If step 5 or 6 throws, the row stays `PENDING` with `jobId` null, and the response is `202`
+with that same resource — the caller gets the id either way. The row is **never** marked
+`FAILED` on an indeterminate error: the job may well be running, and reconcile owns it.
+
+The ordering of steps 2 and 4 is the whole point. Reversed, an unconfigured environment
+writes one `PENDING` row per attempt for jobs that were never sent, and hands every one of
+them to `reconcile`.
 
 ### Poll and complete
 
@@ -462,6 +525,18 @@ Upstream failures never surface raw. Mapping:
 | `409` on retry | Job is not in `failed` state | Unreachable in normal operation — we reject a non-`FAILED` row with our own `409` *before* calling upstream. If it still occurs, our state and the orchestrator's disagree, so it is a `502` |
 | `404` on poll | Unknown job | Row → `FAILED`, reason records the lost job |
 | timeout / network | Indeterminate | Row **stays `PENDING`**. Never `FAILED` |
+| *not configured* | Nothing was sent | `503`, and **no row is written** — see [Submit outcomes](#submit-outcomes) |
+
+On **submit** specifically, the mapping above describes how we classify and log the
+upstream fault, not what the caller receives. Every fault reached *after* the request row is
+written — that is every submit-path row in this table, including the `409` and its `500` —
+is returned to the caller as `202` with the row's id. The fault is unchanged and still
+logged at `error`; what changes is that the dealer is handed the id of the thing we created
+instead of an error implying we created nothing.
+
+Reads and retries keep their statuses exactly as listed — no row is at stake there. And the
+`503` row is the one submit-path fault that is genuinely reached *before* the write, which
+is why it alone stays an error status.
 
 The handoff doc notes that schema-validation errors are *not* normalized through a shared
 filter. So error parsing must tolerate an unknown body shape and fall back to the status
@@ -501,6 +576,22 @@ On submit the wizard navigates to a status view for that request id, which polls
 reopen — the request id is in the URL, and the API advances the row on any read, so
 returning later resumes rather than restarts.
 
+Because of the guarantee in [Submit outcomes](#submit-outcomes), the client's whole
+classification is three branches and none of them encodes anything endpoint-specific:
+
+| The client got | It means | It does |
+|---|---|---|
+| Any `2xx` | The row exists and its id is in hand | Navigate to the status view. `201` and `202` are not distinguished |
+| A network error — no response at all | Indeterminate, and no body to read | Try to recover the row from the list endpoint; if that finds nothing, say so and **disable** submit |
+| Any HTTP error status | Nothing was written | Show the server's message; submit stays live, because retrying is safe |
+
+A `handoff` of `UNCONFIRMED` is a display concern only: the status view says the job is
+still being confirmed rather than implying a clean handoff. It never gates navigation.
+
+The no-response branch cannot be removed by any server change — if the connection dies,
+there is no body — but it shrinks from "every 5xx" to "the socket dropped", which retires
+the client-name correlation as the routine path.
+
 Terminal states show:
 
 - **Succeeded** — the tenant id, and the login instruction assembled from `loginHost` +
@@ -523,6 +614,20 @@ Assertions that must exist, because each pins a decision this spec argues for:
 - The request row is written **before** the orchestrator client is called (spy on call
   order). This is the whole recovery story.
 - An indeterminate submit error leaves the row `PENDING`, never `FAILED`.
+- An indeterminate submit error returns **`202` carrying the row's id**, not a `5xx`. The
+  assertion is on the id being present in the body — that is the guarantee the client's
+  whole classification rests on.
+- `handoff` is `UNCONFIRMED` on that `202`, `ACCEPTED` on a `201`, and **flips to
+  `ACCEPTED`** on a later read once reconcile recovers the job id. The third case is the one
+  worth writing: it proves the field is derived rather than a stored flag nobody updates.
+- With the orchestrator unconfigured, submit returns `503` and **`tenantProvisioningRequest`
+  row count is unchanged**. Asserting the status alone would pass against the old
+  write-then-fail ordering.
+- Web: a `202` and a `201` produce the same navigation. A test that only covers `201`
+  cannot tell the two branches apart.
+- Web: an HTTP error of *any* status leaves submit enabled, and a transport-level failure
+  with no response does not. This is the pair that stops a double-provision, so neither
+  case is optional.
 - `tenantId` is recorded from a job whose status is still `running`.
 - `tenantId` is read from the **envelope**, and a job whose `steps[].result.tenant_id`
   disagrees with the envelope still yields the envelope value.
