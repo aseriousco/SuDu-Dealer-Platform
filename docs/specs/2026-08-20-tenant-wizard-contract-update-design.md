@@ -28,6 +28,8 @@ rather than deleted, so a later reader sees what was weighed.
 | **Q2** | Should an empty email become invalid? | **No** — the contract accepts `""` |
 | **Q3** | Ship against one usable plan, or wait for the catalogue? | **Ship** |
 | **Q4** | Where does the domain suffix come from? | **Keep the hardcoded `.mes.sudu.ai`**; revisit at production |
+| **Q5** | Store the dealer-typed domain on `dealer_client`? | **Yes** — written only on successful provisioning, like `tenantId` |
+| **Q6** | Store the tenant admin password locally? | **Yes, encrypted**, revealed only on an audited action |
 
 ### On Q1
 
@@ -199,7 +201,18 @@ stay, because every list GET makes the API sweep the org against the orchestrato
 `packageType` stays for historical rows but is **no longer sent** — the plan supplies the
 package via `tenant_package_id`. Keep the column, stop populating the payload field.
 
-No password column. Ever.
+> **Amended later on 2026-08-20 (Q6).** This section read "No password column. Ever." That is
+> now false, and the reversal is recorded rather than overwritten because the original
+> reasoning was sound and the thing that changed was a fact about the orchestrator, not a
+> change of mind about secrecy: its stored credentials are **never returned by any API**
+> (`dealer-platform-handoff-2026-08-20.md`), so a dealer who sets a root password has no way
+> to read it back. §7 is the answer to that, and it is narrower than a plain column.
+
+`TenantProvisioningRequest` additionally gains `tenantAdminPassword` — **ciphertext, never
+plaintext**. See §7.
+
+`DealerClient` gains `customerDomain` (`String?`), written in the same transaction as the
+ownership record and only on success. See §8.
 
 ## API surface
 
@@ -227,6 +240,47 @@ No password column. Ever.
 New orchestrator error codes to map: `plan_id_required`, `plan_not_found`,
 `plan_package_missing`, `plan_permissions_missing`, `domain_url_required`,
 `expire_time_invalid`.
+
+## 7 · The local credential store
+
+The orchestrator stores tenant admin credentials encrypted and **never returns them**. So for
+a password the dealer chose, our copy is the only readable one that will ever exist. Either we
+keep it or the dealer loses it — and §5's whole purpose is handing credentials on to a client.
+
+Three properties, none optional:
+
+1. **Ciphertext at rest.** AES-256-GCM, key from the environment, authenticated so a tampered
+   row fails to decrypt rather than decrypting to garbage. The column holds no plaintext at
+   any point.
+2. **No incidental reads.** Nothing that lists or shows a request may include it. It leaves
+   the database only through one route that exists to return it, and that route returns
+   nothing else.
+3. **Every reveal is audited.** The route is a `POST` specifically so the global
+   `AuditInterceptor` records it — a `GET` would be invisible. Who revealed which tenant's
+   root password, and when, is the record that makes storing it defensible.
+
+**Fail closed.** With no key configured, a request carrying a password is refused (`503`) —
+never stored in plaintext, and never silently dropped, which would tell the dealer their
+password was kept when it was not.
+
+The staleness disclaimer in §5 is load-bearing here: SuDuAI ERP owns these credentials, we are
+told nothing when they change there, and we tell the client to change them on first login.
+What we store is *what was set*, dated, and it says so.
+
+## 8 · The domain on `dealer_client`
+
+`customerDomain` is written into the `dealer_client` row at the moment that row is created —
+inside `complete()`'s transaction, the same one that writes `tenantId`. So it exists exactly
+when provisioning succeeded, and never for a job that failed or is still running.
+
+This is **not** a reversal of #15, which dropped `dealer_client.slug`. That column held a
+dealer-typed *label* and was treated as authoritative for building a login URL, which was
+wrong on dev. This one holds the full host we actually sent the orchestrator, and SaaS
+`customer_domain` remains the source of truth for display — `readDomain()` reads SaaS, not
+this column. It is a record of what was requested, not a routing input.
+
+Named for what it holds. The field is not called `slug`: it stores `acme.mes.sudu.ai`, not
+`acme`, and a `slug` column holding a full host misleads the next reader.
 
 ## What does not change
 
