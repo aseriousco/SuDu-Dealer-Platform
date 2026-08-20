@@ -17,19 +17,30 @@ experience needs regardless.
 
 Prototype of the resulting intake: <https://claude.ai/code/artifact/c3138fe7-a62a-4f5d-937b-528ee4fa9fa3>
 
-## The one decision that needs sign-off before implementation
+## Decisions
 
-**Defaulting every tenant's root admin to `admin` / `admin` gives every provisioned tenant
-a trivially guessable root credential on a shared public login host.** These are not our
-tenants — they are the dealers' customers — and the account is the one the orchestrator
-itself authenticates as.
+All four open questions were answered on 2026-08-20 and are settled. They are recorded here
+rather than deleted, so a later reader sees what was weighed.
 
-The requirement as given is implemented below (§4). The alternative costs nothing and
-removes the risk: default the password to the **same derived rule the initial user already
-uses**, `{account}@123!`. It stays computable from data we already hold, so §5 can still
-display it without storing a secret, and it is not a value an attacker guesses first.
+| | Question | Decision |
+|---|---|---|
+| **Q1** | `admin`/`admin`, or a derived password? | **`admin`/`admin`**, always, as the default |
+| **Q2** | Should an empty email become invalid? | **No** — the contract accepts `""` |
+| **Q3** | Ship against one usable plan, or wait for the catalogue? | **Ship** |
+| **Q4** | Where does the domain suffix come from? | **Keep the hardcoded `.mes.sudu.ai`**; revisit at production |
 
-Recorded as **Q1**. Everything else in this spec is unaffected by the answer.
+### On Q1
+
+The alternative offered was the derived `{account}@123!` rule the initial user already uses —
+same display benefit, no guessable root credential. `admin`/`admin` was chosen and is what §4
+specifies.
+
+What that means, stated once so it is not rediscovered later: **every tenant this wizard
+provisions ships with root credentials of `admin`/`admin`**, on the account the orchestrator
+itself authenticates as, reachable from a shared public login host. Nothing downstream
+mitigates it — there is no forced rotation on first login, and §5 displays the pair to the
+dealer by design. If that becomes unacceptable, the change is one constant and one boolean;
+§5 keeps working unchanged because a derived password is just as computable as a constant.
 
 ---
 
@@ -47,11 +58,18 @@ been deliberately unsent since `49ed85b`. It now becomes a required submitted fi
   someone else's.
 - Submitted as `customer_domain = "<slug>" + <suffix>`.
 
-**The suffix must come from the API, not a web constant.** It is environment-paired —
-`main.mes.sudu.ai` in production, `dev.mes.sudu.ai` against the dev orchestrator — and the
-API already resolves that pairing in `SAAS_TENANT_LOGIN_HOST` / `TENANT_DOMAIN_TEMPLATE`. A
-hardcoded web constant would send production domains from a dev build. Expose it on the
-existing bootstrap/config response the wizard already loads.
+**Suffix — decided (Q4): keep the hardcoded `.mes.sudu.ai` already in the code**, and revisit
+at production. It is not new work: `TenantInfoStep.tsx:58` already renders it as the input
+adornment, and the availability messages, `ReviewStep` and `ClaimTenantForm` all compose the
+same string.
+
+The accepted risk, recorded because the codebase already argues against it in two places
+(`DomainLink.tsx` — "Never rebuild it from a `.mes.sudu.ai` template here: that was wrong on
+dev" — and `dealer-api.ts:109`): dev tenants live at `dev.mes.sudu.ai`, so against the dev
+orchestrator we now *submit* a production-shaped domain, where previously the mismatch only
+affected a display hint. It is written to `blade_tenant.domain_url` and to the billing record.
+Harmless on dev, wrong-looking, and the reason the suffix should become server-supplied when
+production lands.
 
 > **Invariant check.** `sudu-dealer-api/CLAUDE.md` states provisioned tenants have no
 > subdomain and forbids reintroducing a local subdomain column. That rule is about
@@ -86,8 +104,7 @@ orchestrator documents `""` as an accepted value".
 - A non-empty value must be a valid address: `@ValidateIf(v => v !== '') @IsEmail()` on the
   DTO, `type="email"` plus explicit validation on the form.
 
-Recorded as **Q2**: if empty should also become invalid, it is a one-line change — but it is a
-product decision, not a validation bug.
+Q2 confirmed this: empty stays acceptable.
 
 ## 4 · Tenant admin credentials
 
@@ -95,7 +112,7 @@ product decision, not a validation bug.
 applied by the orchestrator as **step 21**, after everything else.
 
 - Both inputs optional and blank by default.
-- **When both are blank, send `{ username: "admin", password: "admin" }`** (subject to Q1).
+- **When both are blank, send `{ username: "admin", password: "admin" }`** (Q1, decided).
 - When either is filled, send what the dealer typed.
 
 The form must state what this account is, because it is easy to confuse with the initial user:
@@ -131,6 +148,7 @@ password, we show the username and say plainly that the password was set by them
 and is not stored — which is true, and better than a reassuring blank.
 
 That requires one boolean on the row (`tenantAdminDefaulted`) to distinguish the two cases.
+With Q1 decided, the defaulted case is the common one and resolves to `admin` / `admin`.
 Storing the password itself instead would turn our database into a store of customers' root
 credentials for a display convenience; it is not worth it, and the orchestrator takes the same
 position — its own stored credentials "are never returned by any API".
@@ -235,18 +253,11 @@ retry mints a fresh idempotency key server-side, creating a second real tenant.
 
 ## Open questions
 
-| | Question | Recommendation |
-|---|---|---|
-| **Q1** | `admin`/`admin`, or the derived `{account}@123!` rule? | Derived — same display benefit, no guessable root credential |
-| **Q2** | Should an empty email become invalid too? | No; the contract accepts `""` |
-| **Q3** | `sudu_plan` holds two test rows, one inactive. Ship against one usable plan, or wait for the catalogue? | Ship — the selector is correct either way and the catalogue is data, not code |
-| **Q4** | Is the domain suffix `.mes.sudu.ai` in every environment, or `.dev.mes.sudu.ai` against dev? | Confirm before wiring; it decides whether the API returns a suffix or a template |
+None. All four are resolved in [Decisions](#decisions) above.
 
 ## Per-repo plans
 
-To be written once Q1 and Q4 are answered:
-
-- `sudu-dealer-api/docs/superpowers/plans/2026-08-20-tenant-wizard-contract-update-api.md`
-- `sudu-dealer-web/docs/superpowers/plans/2026-08-20-tenant-wizard-contract-update-web.md`
+- [`sudu-dealer-api/docs/superpowers/plans/2026-08-20-tenant-wizard-contract-update-api.md`](../../sudu-dealer-api/docs/superpowers/plans/2026-08-20-tenant-wizard-contract-update-api.md)
+- [`sudu-dealer-web/docs/superpowers/plans/2026-08-20-tenant-wizard-contract-update-web.md`](../../sudu-dealer-web/docs/superpowers/plans/2026-08-20-tenant-wizard-contract-update-web.md)
 
 Each links back to this spec.
