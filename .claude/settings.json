@@ -1,6 +1,10 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
+    "additionalDirectories": [
+      "./sudu-dealer-api",
+      "./sudu-dealer-web"
+    ],
     "allow": [
       "Bash(node -v)",
       "Bash(node --version)",

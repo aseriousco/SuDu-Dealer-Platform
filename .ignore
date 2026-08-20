@@ -1,0 +1,12 @@
+# ripgrep-only overrides (.ignore outranks .gitignore, and git never reads it).
+#
+# The root .gitignore excludes sudu-dealer-api/ and sudu-dealer-web/ because they
+# are independent repos whose history is not tracked here. That is correct for git
+# — but it also hid both application repos from every ignore-respecting search,
+# which is why searches rooted here used to come back nearly empty and get retried
+# as raw `grep -r` / `rg --no-ignore` in a shell.
+#
+# These negations put the source back in scope for search tools. Each repo's own
+# .gitignore still applies inside it, so node_modules/, dist/, and .env stay out.
+!sudu-dealer-api/
+!sudu-dealer-web/
