@@ -160,23 +160,24 @@ Rules for the surface:
 - The provisioning request is found from `dealerClientId`, which the completion path already
   writes.
 
-## 6 · Auto-dismissing tray tasks
+## 6 · Dismissing tray tasks
 
-**Web only.** The tray currently keeps finished rows for `KEEP_FINISHED_MS` (24 h), which is
-right for recovery and wrong for a bar that sits over every page.
+**Web only.** The tray keeps finished rows for `KEEP_FINISHED_MS` (24 h) and offers no way to
+clear one. The dealer gets an explicit control instead.
 
-- A row that reaches **`SUCCEEDED`** starts a dismiss timer and disappears on its own.
-  Proposed: **30 s** after first being observed finished.
-- A row that reaches **`FAILED` does not auto-dismiss.** It is the one the dealer must act on;
-  hiding it after a timer is how a failed tenant goes unnoticed. It gets a manual dismiss
-  control instead.
-- Every row gets manual dismiss regardless of state.
-- Dismissed ids persist in `localStorage` so a dismissed task does not return on the next
-  page load. Request ids are not secrets; no session material goes near storage.
-- The 24 h prune stays as a backstop for rows never observed finishing.
+- **No timers.** Nothing disappears on its own. A row leaves the tray because the dealer
+  dismissed it, or because the 24 h prune caught it.
+- A **finished** row — `SUCCEEDED` or `FAILED` — gets a dismiss control.
+- A **running** row does not. The tray exists to give the dealer a way back to work in flight;
+  a control that throws that away is a trap, not a convenience. It becomes dismissible the
+  moment it finishes.
+- Dismissed ids persist in `localStorage` so a dismissed task does not return on the next page
+  load. Request ids are not secrets; no session material goes near storage.
+- The 24 h prune stays as the backstop for rows the dealer never dismisses.
 
-Timer starts when the client **first sees** the terminal state, not from `completedAt` — a
-job that finished while the tab was closed should still be visible when the dealer returns.
+Dismissing is a **view** action, not a state change: it hides the row locally and writes
+nothing to the server. The job, its status page and the tenant remain exactly as they were, and
+a dismissed job is still reachable from the tenants list.
 
 Polling is unaffected: the tray already stops polling when nothing is `PENDING`, and that must
 stay, because every list GET makes the API sweep the org against the orchestrator.
