@@ -1,8 +1,13 @@
 # Dealer API → Tenant Orchestrator: Deployed Environment Contract
 
-Date: 2026-08-19
+Date: 2026-08-19 · **Updated 2026-08-21**
 From: SuDu Dealer Platform (`sudu-dealer-api`)
 To: `sudu-tenant-orchestrator` administrators
+
+> **What changed on 2026-08-21.** Question 4's example body was from before your
+> 2026-08-20 contract and no longer matched what we send; it is corrected below.
+> Question 8 is new and is **blocking** for any tenant whose admin credentials the dealer
+> sets. Questions 1-7 are unchanged — earlier answers still apply.
 
 ## Purpose
 
@@ -64,17 +69,24 @@ you would rather we verify with `provisioning_profile:read`, add it and we will.
 
 ### 4. Which provisioning profile applies when we omit `profile_key`?
 
-Our submit body is exactly these five fields:
+Our submit body, as of your 2026-08-20 contract:
 
 ```json
 {
   "request_ref": "dealer-<uuid>",
   "tenant": { "client_name": "..." },
-  "package": { "type": "..." },
-  "accounting": { "type": "..." },
+  "plan": { "plan_id": "<sudu_plan.id>" },
+  "accounting": { "type": "SQL | ATC" },
+  "customer_domain": "acme.mes.sudu.ai",
+  "expire_time": "2027-01-31",
+  "tenant_admin": { "username": "...", "password": "..." },
   "initial_user": { "account": "...", "name": "...", "real_name": "...", "email": "..." }
 }
 ```
+
+`expire_time` and `tenant_admin` are omitted entirely when the dealer does not set them —
+an absent `tenant_admin` is how we ask you to skip step 21, not an empty object. We no
+longer send `package`: the plan supplies it via `tenant_package_id`, per your change.
 
 No `profile_key`, no `profile_version` — so the deployed environment's default applies.
 Please confirm what that default is, and that it is not `dev_default` in whichever
@@ -104,6 +116,36 @@ ServiceIdentity (they must not collide across callers).
 
 Our API runs as a Coolify application. If you allowlist egress, tell us what you need and
 we will supply the deployment's outbound address.
+
+### 8. Set `TENANT_CREDENTIAL_KEY` on the orchestrator **(blocking for one path)**
+
+On 2026-08-20 a provisioning job on the dev orchestrator failed at the last step:
+
+```
+Step update_tenant_admin_credentials failed: TENANT_CREDENTIAL_KEY is not configured
+```
+
+The tenant (332555) was created and configured; only step 21 failed, and the job is
+recorded as failed. This variable appears in **none** of the three handoff documents you
+have sent us, so we had no way to know it was required.
+
+It matters because it gates the credential lifecycle your own contract documents: a
+`tenant_admin` on the create body, `POST /v1/tenants/{id}/admin-credentials`, and
+`POST /v1/tenants/{id}/stored-credentials` all depend on it. Until it is set, a dealer who
+chooses their customer's root credentials loses the whole job at the final step.
+
+We have reduced the blast radius on our side — we now omit `tenant_admin` unless the dealer
+explicitly sets one, so the ordinary case skips step 21 entirely, and we refuse `admin`/`admin`
+outright because it asks you to set the account the tenant already has. Neither helps a dealer
+who genuinely wants their own credentials.
+
+Three things, please:
+
+1. Set it in the dev orchestrator, and in whichever environment answers question 1.
+2. Tell us whether rotating it makes previously stored credentials unreadable. We keep our
+   own encrypted copy (see the note below) precisely because you never return yours, and
+   we would rather know now than discover it during an incident.
+3. Confirm whether tenant 332555 can be repaired, or should be treated as abandoned.
 
 ## What we will send you
 
@@ -138,6 +180,7 @@ without asking; "yours" means we cannot fill it in until you answer.
 | `TENANT_ORCHESTRATOR_JWT_AUDIENCE` | **yours** | `tenant-provisioning-service` | Same |
 | `TENANT_ORCHESTRATOR_TOKEN_TTL_SEC` | ours | `300` | 5 minutes, inside your recommended 5–15 |
 | `SAAS_TENANT_LOGIN_HOST` | **yours** | — | Paired with question 1. `main.mes.sudu.ai` for production, `dev.mes.sudu.ai` for dev |
+| `DEALER_CREDENTIAL_KEY` | ours | *(secret)* | 32 bytes, AES-256-GCM. Encrypts our copy of a tenant admin password at rest. Listed for completeness — nothing on your side reads it, but the deployed API refuses to accept a tenant admin password without it |
 
 Scopes are not configured as an environment variable on our side. Each call requests the
 one scope that route needs, minted per call and cached per scope.
@@ -190,6 +233,13 @@ Not asks — just what we are doing, so a failure is diagnosable from either end
 - **An unconfigured orchestrator is refused before we write anything.** If the key is
   missing, a dealer sees "provisioning is not available yet" and no row is created — so an
   environment awaiting registration produces no stranded rows for you to clean up.
+- **We keep our own encrypted copy of a tenant admin password.** Your stored credentials
+  are never returned by any API — correct, and it means a dealer who sets a root password
+  has no way to read it back to hand to their customer. So we store it AES-256-GCM
+  encrypted, return it only through a single audited route, and refuse the request outright
+  if our key is unconfigured rather than storing plaintext or silently dropping it. Yours
+  remains the operative copy; ours exists to be handed over once. This is the background to
+  question 8.2.
 - **A submitted row is never marked failed on an indeterminate fault.** If our call to you
   times out, the row stays pending and carries its `request_ref`, and we recover the job
   through `GET /v1/jobs?request_ref=`. That is why question 6 matters.
@@ -198,4 +248,7 @@ Not asks — just what we are doing, so a failure is diagnosable from either end
 
 - [`handoff-tenant-orchestrator-jwt-access.md`](./handoff-tenant-orchestrator-jwt-access.md) — your registration process
 - [`sudu-tenant-orchestrator-api-handoff-2026-08-06.md`](./sudu-tenant-orchestrator-api-handoff-2026-08-06.md) — your API map
+- [`sudu-tenant-orchestrator-api-handoff-2026-08-19.md`](./sudu-tenant-orchestrator-api-handoff-2026-08-19.md) and
+  [`dealer-platform-handoff-2026-08-20.md`](./dealer-platform-handoff-2026-08-20.md) — your contract changes, which question 4 now reflects
 - [`specs/2026-08-11-tenant-provisioning-design.md`](./specs/2026-08-11-tenant-provisioning-design.md) — our cross-repo design
+- [`specs/2026-08-20-tenant-wizard-contract-update-design.md`](./specs/2026-08-20-tenant-wizard-contract-update-design.md) — our side of the 2026-08-20 change, including §7 on the credential store
