@@ -372,7 +372,7 @@ The orchestrator does not currently enforce a scheduled key expiry. The owning t
 
 ## Source of Truth
 
-- API authentication and route handoff: `docs/sudu-tenant-orchestrator-api-handoff-2026-08-06.md`
+- API authentication and route handoff: `docs/orchestrator/sudu-tenant-orchestrator-api-handoff-2026-08-06.md`
 - Full project authentication documentation: `docs/tenant-provisioning-project-documentation.md`
 - Service identity schema: `prisma/schema.prisma`
 - JWT verification behavior: `src/auth/internal-jwt-auth.guard.ts`

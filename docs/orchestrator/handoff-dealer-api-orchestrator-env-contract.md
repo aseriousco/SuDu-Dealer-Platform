@@ -180,6 +180,7 @@ without asking; "yours" means we cannot fill it in until you answer.
 | `TENANT_ORCHESTRATOR_JWT_AUDIENCE` | **yours** | `tenant-provisioning-service` | Same |
 | `TENANT_ORCHESTRATOR_TOKEN_TTL_SEC` | ours | `300` | 5 minutes, inside your recommended 5–15 |
 | `SAAS_TENANT_LOGIN_HOST` | **yours** | — | Paired with question 1. `main.mes.sudu.ai` for production, `dev.mes.sudu.ai` for dev |
+| `ORCHESTRATOR_PROFILE_KEY` | **yours** | `main_default` (prod) / empty (dev) | Sent as the create body's top-level `profile_key`, per your 2026-08-24 handoff. Empty omits the field, so you resolve `dev_default`. **Please confirm the dev environment should send nothing rather than an explicit `dev_default`** |
 | `DEALER_CREDENTIAL_KEY` | ours | *(secret)* | 32 bytes, AES-256-GCM. Encrypts our copy of a tenant admin password at rest. Listed for completeness — nothing on your side reads it, but the deployed API refuses to accept a tenant admin password without it |
 
 Scopes are not configured as an environment variable on our side. Each call requests the

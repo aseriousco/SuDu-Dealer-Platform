@@ -11,6 +11,7 @@ something **neither repo owns alone**.
 | The FE↔BE surface for an area — endpoints, shapes, error cases | `docs/contracts/` | `<area>.md` |
 | How to do a thing on this machine — boot, reset, deploy | `docs/runbooks/` | `<task>.md` |
 | Shared vocabulary | `docs/glossary.md` | — |
+| A contract handed to us by the **sudu-tenant-orchestrator** team | `docs/orchestrator/` | as they named it — do not rename |
 | An implementation plan for **one** repo — the how | that repo's `docs/superpowers/plans/` | `YYYY-MM-DD-<feature>-<side>.md` |
 | A design for work confined to **one** repo | that repo's `docs/superpowers/specs/` | `YYYY-MM-DD-<feature>-design.md` |
 

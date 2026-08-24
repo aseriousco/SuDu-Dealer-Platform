@@ -2,7 +2,7 @@
 
 **Status:** design, not yet implemented
 **Branch (all three repos):** `feat/tenant-wizard-contract-update`, off `main`
-**Parent contract:** [`../dealer-platform-handoff-2026-08-20.md`](../dealer-platform-handoff-2026-08-20.md)
+**Parent contract:** [`../orchestrator/dealer-platform-handoff-2026-08-20.md`](../orchestrator/dealer-platform-handoff-2026-08-20.md)
 **Supersedes for the create path:** [`2026-08-11-tenant-provisioning-design.md`](./2026-08-11-tenant-provisioning-design.md) and its 2026-08-18 amendment, which remain accurate for the submit-handoff guarantee.
 
 ## Why
