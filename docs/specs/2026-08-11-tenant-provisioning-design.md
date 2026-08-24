@@ -1,6 +1,7 @@
 # Tenant Provisioning — cross-repo design
 
-**Status:** draft · **amended 2026-08-18** — see [Submit outcomes](#submit-outcomes)
+**Status:** draft · **amended 2026-08-18, 2026-08-24** — see [Submit outcomes](#submit-outcomes)
+and [Error handling](#error-handling)
 **Repos:** sudu-dealer-api · sudu-dealer-web
 **Branches:** `feat/tenant-management` (both) · `docs/tenant-management-cross-repo-spec` (workspace root)
 **Plans:** api → [`2026-08-11-tenant-provisioning-api.md`](../../sudu-dealer-api/docs/superpowers/plans/2026-08-11-tenant-provisioning-api.md) · web → [`2026-08-11-tenant-provisioning-web.md`](../../sudu-dealer-web/docs/superpowers/plans/2026-08-11-tenant-provisioning-web.md)
@@ -18,6 +19,17 @@
 > [`sudu-dealer-web#19`](https://github.com/aseriousco/sudu-dealer-web/pull/19) — implement
 > the **original** contract, and the web PR carries a client-side workaround for it.
 > [Submit outcomes](#submit-outcomes) is the replacement and is **not yet implemented**.
+
+> **Amended 2026-08-24 — refusals, after a production incident.** The orchestrator refused a
+> submit with `409 BladeX tenant name … already exists locally`. That refusal carries no
+> `error_code`, so it fell through to the generic `502` and was handled as indeterminate: the
+> row stayed `PENDING` with no job upstream to ever find, polling forever behind a dealer-facing
+> notice promising it "usually sorts itself out within seconds". It could not.
+>
+> A refusal is reached *after* the write but is **not** indeterminate — a distinction the
+> 2026-08-18 amendment did not draw. [Submit outcomes](#submit-outcomes) and
+> [Error handling](#error-handling) now do. The same incident exposed an upstream defect that
+> is **not** fixed here: a failed job permanently burns its tenant name.
 
 ## Problem
 
@@ -139,8 +151,14 @@ The row is written **before** the orchestrator is called, so "the call failed" a
 was created" are different facts. The response distinguishes them, and one guarantee falls
 out of it:
 
-> **If the row was written, the caller gets a 2xx carrying its id. Any error status means
-> nothing was written.**
+> **If a job might exist upstream, the caller gets a 2xx carrying the row's id. An error
+> status means no job exists upstream — nothing to poll, and nothing a retry could
+> double-provision.**
+
+*Amended 2026-08-24.* This previously read "any error status means nothing was written",
+which the refusal case below breaks: a refused submit answers `4xx` with a row already
+written (and settled `FAILED`). The guarantee was never really about our row — it is about
+what the caller may safely do next, and that is decided by whether a job exists upstream.
 
 | Response | When | Body |
 |---|---|---|
@@ -148,6 +166,7 @@ out of it:
 | `202 Accepted` | Row written, orchestrator call failed indeterminately | resource, `handoff: "UNCONFIRMED"`, `jobId` still null |
 | `503 Service Unavailable` | Orchestrator not configured — nothing sent, **nothing written** | error only |
 | `4xx` | Validation or authorization — reached **before** the write | error only |
+| `409` / `400` | Orchestrator **refused** the submit. Nothing created upstream; the row is settled `FAILED` and the upstream sentence becomes its `failureReason` | error only |
 
 `202` is not a softened error; it is what actually happened. We accepted the request and
 durably recorded it, and the job's fate is genuinely unknown — which is the same state the
@@ -156,10 +175,33 @@ resolve. Returning `502` instead forces every client to encode the knowledge tha
 endpoint's* `502` is special, and the alternative — assuming a `5xx` means nothing was
 created — is a double-provision.
 
-Note what the `4xx` row does *not* say. Every upstream refusal is reached **after** the write,
-so none of them can return `4xx` without breaking the guarantee — they are `202`, exactly like
-any other post-write fault. Only validation and authorization run before the row exists. A
-future post-write `4xx` on this endpoint would be a defect, not an extension.
+**A refusal is post-write but not indeterminate, and that distinction is the whole point.**
+An earlier revision of this spec said every upstream refusal must be `202` because all of
+them are reached after the write. That reasoning treated "post-write" and "indeterminate" as
+the same thing. They are not: the orchestrator can refuse a submit outright, before it writes
+anything of its own, and then no job exists at all.
+
+`202` would be actively wrong there. `handoff: "UNCONFIRMED"` claims the job's fate is
+unknown, so advance-on-read polls `GET /v1/jobs?request_ref=` forever for a job that was
+never created, `reconcile` eventually fails the row with a reason claiming the submit never
+reached the orchestrator — it did, and was refused — and the dealer watches a spinner saying
+it "usually sorts itself out within seconds". It never does. **A refusal returned as `202` is
+the defect; the `4xx` is the fix.**
+
+The hazard the `202` rule exists to prevent does not apply. That rule protects against a
+retry minting a fresh `Idempotency-Key` against a job that *is* running, producing a second
+real tenant. After a refusal there is no such job, so a retry is not merely safe — it is the
+only way for the dealer to make progress, and they need the message to know what to change.
+
+Two things make the `4xx` honest rather than a lie about our own state: the row is settled
+`FAILED` (never left `PENDING`), and the refusal's message is carried through verbatim. The
+row's existence is an audit record of an attempt that was refused, not a resource the caller
+must reason about.
+
+It is also what the draft path requires. `submitFromDraft` deletes the draft only *after*
+`submit` returns, precisely so a refused submit does not destroy the dealer's only copy.
+Returning `202` would delete their draft and hand them a `FAILED` row with no upstream job,
+which `retry()` refuses — losing their work and giving them nothing to act on.
 
 **`503` when unconfigured is a separate case on purpose.** With no ES256 key nothing is
 sent upstream at all, so the request is not indeterminate: we know it never left. The
@@ -447,9 +489,15 @@ the audit write hiccuped.
 6. Persist `jobId` from the receipt.
 7. Return `201` with the resource.
 
-If step 5 or 6 throws, the row stays `PENDING` with `jobId` null, and the response is `202`
-with that same resource — the caller gets the id either way. The row is **never** marked
-`FAILED` on an indeterminate error: the job may well be running, and reconcile owns it.
+If step 5 or 6 throws **indeterminately**, the row stays `PENDING` with `jobId` null and the
+response is `202` with that same resource — the caller gets the id either way. The row is
+**never** marked `FAILED` on an indeterminate error: the job may well be running, and
+reconcile owns it.
+
+If step 5 is **refused** — the orchestrator answered a definite "no" and created nothing —
+the row is settled `FAILED` with the refusal as its `failureReason` and the refusal is
+rethrown. There is no job for reconcile to find, so leaving it `PENDING` would strand it
+forever. See [Error handling](#error-handling).
 
 The ordering of steps 2 and 4 is the whole point. Reversed, an unconfigured environment
 writes one `PENDING` row per attempt for jobs that were never sent, and hands every one of
@@ -525,24 +573,59 @@ Upstream failures never surface raw. Mapping:
 | Upstream | Meaning | Our response |
 |---|---|---|
 | `400` | Bad request or missing idempotency key | `502` — our bug, not the dealer's. Logged loudly |
+| `400` with a documented `error_code` | **Refusal** — one of the `REJECTED_BEFORE_WRITE` codes (`plan_not_found`, `domain_url_required`, …) | `400` to the caller, in our own words. Row → `FAILED` |
 | `401` | JWT invalid or unknown identity | `502`, logged as a configuration fault |
 | `403` | Missing scope | `502`, logged as a configuration fault |
-| `409` on submit | Idempotency key reused with a different body | `500` — impossible unless we generated a duplicate key |
+| `409` on submit | **Refusal.** The orchestrator's own local tenant registry already holds this tenant name — or, in theory, an idempotency key was reused with a different body | `409` to the caller, carrying the upstream sentence. Row → `FAILED`. Nothing was created upstream |
 | `409` on retry | Job is not in `failed` state | Unreachable in normal operation — we reject a non-`FAILED` row with our own `409` *before* calling upstream. If it still occurs, our state and the orchestrator's disagree, so it is a `502` |
 | `404` on poll | Unknown job | Row → `FAILED`, reason records the lost job |
 | timeout / network | Indeterminate | Row **stays `PENDING`**. Never `FAILED` |
 | *not configured* | Nothing was sent | `503`, and **no row is written** — see [Submit outcomes](#submit-outcomes) |
 
-On **submit** specifically, the mapping above describes how we classify and log the
-upstream fault, not what the caller receives. Every fault reached *after* the request row is
-written — that is every submit-path row in this table, including the `409` and its `500` —
-is returned to the caller as `202` with the row's id. The fault is unchanged and still
-logged at `error`; what changes is that the dealer is handed the id of the thing we created
-instead of an error implying we created nothing.
+On **submit**, the mapping above describes how we classify and log the upstream fault, not
+what the caller receives. Every *indeterminate* fault reached after the request row is
+written is returned as `202` with the row's id: the fault is unchanged and still logged at
+`error`, but the dealer is handed the id of the thing we created rather than an error
+implying we created nothing.
 
-Reads and retries keep their statuses exactly as listed — no row is at stake there. And the
-`503` row is the one submit-path fault that is genuinely reached *before* the write, which
-is why it alone stays an error status.
+**Refusals are the exception**, and are the two rows marked so above. They are reached after
+the write but are not indeterminate — the orchestrator wrote nothing — so the row is settled
+`FAILED` and the refusal is returned to the caller. See
+[Submit outcomes](#submit-outcomes) for why `202` would be wrong there.
+
+The `503` row is the one submit-path fault genuinely reached *before* the write, which is why
+nothing is written for it at all.
+
+Reads and retries keep their statuses exactly as listed — no row is at stake there. In
+particular a `409` on **retry** stays a `502`: it means the job is not in `failed` state,
+which is our state and theirs disagreeing, not a refusal the dealer can act on. Only submit
+treats a `409` as terminal.
+
+### The orchestrator burns a tenant name on a failed job
+
+Discovered in production, 2026-08-24. **This is an upstream defect and is not fixed here** —
+what follows is what the dealer platform must do while it stands.
+
+The orchestrator keeps its own local tenant registry, separate from BladeX, and registers the
+tenant name at submit. It does **not** release that name when the job fails. So a job that
+fails at `create_tenant` — no BladeX tenant created — still leaves the name permanently
+claimed, and resubmitting the same details is refused with the `409` above.
+
+Two consequences the platform has to carry:
+
+1. **Resubmitting is not the recovery.** `POST /v1/jobs/:job_id/retry` reuses the original
+   immutable request snapshot and never re-runs the submit-time name check, which makes retry
+   in place the only way to reuse a burned name. `POST /api/admin/tenant-provisioning-requests/:id/retry`
+   is that path, and it is platform-admin only because retry is correct only once the
+   underlying cause is corrected.
+2. **Names are a shared global namespace.** `tenant.client_name` is truncated to 20 chars for
+   BladeX and is unique across every dealer, while our own `clientName` has no uniqueness
+   constraint and accepts 200 chars. Two dealers cannot both have a `jordan`, and two
+   *different* names that share their first 20 characters collide as one.
+
+Asked of the orchestrator team: release the name when a job fails (or register it only once
+`create_tenant` succeeds), and expose a name-availability check so the form can warn before a
+dealer fills in twelve more fields.
 
 The handoff doc notes that schema-validation errors are *not* normalized through a shared
 filter. So error parsing must tolerate an unknown body shape and fall back to the status
@@ -589,7 +672,7 @@ classification is three branches and none of them encodes anything endpoint-spec
 |---|---|---|
 | Any `2xx` | The row exists and its id is in hand | Navigate to the status view. `201` and `202` are not distinguished |
 | A network error — no response at all | Indeterminate, and no body to read | Try to recover the row from the list endpoint; if that finds nothing, say so and **disable** submit |
-| Any HTTP error status | Nothing was written | Show the server's message; submit stays live, because retrying is safe |
+| Any HTTP error status | No job exists upstream | Show the server's message; submit stays live, because retrying is safe. A refusal (`409`/`400`) means the message names something to change first — most often the tenant name |
 
 A `handoff` of `UNCONFIRMED` is a display concern only: the status view says the job is
 still being confirmed rather than implying a clean handoff. It never gates navigation.
@@ -604,7 +687,11 @@ Terminal states show:
   `tenantId`, plus the fixed initial-password rule so the dealer can pass it to their
   customer, with the instruction to change it in SaaS on first login.
 - **Failed** — `failureReason`, and the fact that recovery is a platform-admin action.
-  No dealer-facing retry button.
+  **No dealer-facing retry button.** A platform admin viewing the same page gets one, since
+  their scope resolves to every request: retry in place is the only way to reuse a tenant
+  name a failed job has already burned (see [above](#the-orchestrator-burns-a-tenant-name-on-a-failed-job)).
+  It is shown only when `handoff` is `ACCEPTED` — `UNCONFIRMED` means there is no upstream
+  job and `retry()` refuses it.
 
 `DealerTenantsView` needs no polling logic of its own; the API's advance-on-read behaviour
 means a provisioned tenant materialises in the list on the next load.
@@ -620,6 +707,11 @@ Assertions that must exist, because each pins a decision this spec argues for:
 - The request row is written **before** the orchestrator client is called (spy on call
   order). This is the whole recovery story.
 - An indeterminate submit error leaves the row `PENDING`, never `FAILED`.
+- A **refused** submit settles the row `FAILED` and rethrows, carrying the upstream sentence
+  into `failureReason`. This is the pair that stops a refusal being polled forever; assert
+  both halves, since either alone still leaves the dealer stuck.
+- A `409` on **retry** stays a `502` and is *not* treated as a refusal. Scoping this to
+  submit is load-bearing, and nothing else pins it.
 - An indeterminate submit error returns **`202` carrying the row's id**, not a `5xx`. The
   assertion is on the id being present in the body — that is the guarantee the client's
   whole classification rests on.
