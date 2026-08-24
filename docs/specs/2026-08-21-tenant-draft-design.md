@@ -3,7 +3,8 @@
 **Status:** approved, not yet implemented
 **Repos:** `sudu-dealer-api` · `sudu-dealer-web`
 **Branches:** `feat/tenant-draft` (both), off `main`
-**Plans:** api → `sudu-dealer-api/docs/superpowers/plans/…` · web → `sudu-dealer-web/docs/superpowers/plans/…` (neither written yet)
+**Plans:** api → [`sudu-dealer-api/docs/superpowers/plans/2026-08-21-tenant-drafts-api.md`](../../sudu-dealer-api/docs/superpowers/plans/2026-08-21-tenant-drafts-api.md) · web → [`sudu-dealer-web/docs/superpowers/plans/2026-08-21-tenant-drafts-web.md`](../../sudu-dealer-web/docs/superpowers/plans/2026-08-21-tenant-drafts-web.md)
+**Order:** API first — every web task calls endpoints that do not exist until it is merged.
 **Builds on:** [`2026-08-20-tenant-wizard-contract-update-design.md`](./2026-08-20-tenant-wizard-contract-update-design.md) — the credential store (Q6) and the wizard shape this feature persists.
 
 ## Problem
@@ -54,6 +55,21 @@ This differs deliberately from `tenant_provisioning_request.tenantAdminPassword`
 credentials and the detail page's whole job is handing them to a client. A draft has no
 tenant yet, so it has no such job.
 
+### On Q1 — the scoping divergence it creates
+
+Every tenant read goes through `ScopingService.resolveVisibleScope()`, which narrows a
+non-ADMIN role to its member-node subtree by returning an `ownerMemberNodeId` filter.
+Drafts cannot use it: `tenant_draft` has no such column, because a draft has no owner node
+until submit resolves one.
+
+So drafts are scoped by plain `organizationId`, and the consequence is worth stating rather
+than discovering: **a custom-role user sees every draft in their organization, while they
+see only their subtree's tenants.** That follows directly from the Q1 answer — the feature
+is a colleague finishing a registration someone else started — but it is a genuine
+difference in visibility rules between two things shown in the same list. If it ever has to
+change, the fix is an `ownerMemberNodeId` column on the draft plus `resolveVisibleScope`,
+not a filter in a controller.
+
 ### On Q5 — why not a status on the provisioning request
 
 `tenant_provisioning_request` was the obvious home and is the wrong one. `requestRef` and
@@ -97,8 +113,8 @@ interface TenantDraftView {
   planId: string | null;           // a su-code snowflake. ALWAYS a string
   accountingType: 'SQL' | 'ATC' | null;
   tenantAdmin: { username: string | null; hasStoredPassword: boolean };
-  createdBy: { userId: string; username: string };
-  updatedBy: { userId: string; username: string } | null;
+  createdBy: { userId: string; label: string | null };
+  updatedBy: { userId: string; label: string | null } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -107,6 +123,11 @@ interface TenantDraftView {
 **No password field, on any draft response, ever.** `hasStoredPassword` is the boolean
 that lets the UI say "saved" and offer a Change action without asking for the secret —
 the same shape `ProvisioningCredentialsView.tenantAdmin` already uses.
+
+`label` is resolved through `formatActorLabel` (`displayUsername → username → name →
+email`), the same function the audit trail uses, so a person is called the same thing on
+both screens. It is `null` for a user whose account carries none of those — display only,
+never something to authorize against.
 
 `slug` holds the **label**, not `<slug>.mes.sudu.ai`. The suffix is composed at submit,
 exactly where `CreateTenantForm` composes it today, so a future move of the suffix
