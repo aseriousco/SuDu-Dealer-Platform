@@ -5,7 +5,7 @@
 **Branches:** `feat/tenant-management` (both) · `docs/tenant-management-cross-repo-spec` (workspace root)
 **Plans:** api → [`2026-08-11-tenant-provisioning-api.md`](../../sudu-dealer-api/docs/superpowers/plans/2026-08-11-tenant-provisioning-api.md) · web → [`2026-08-11-tenant-provisioning-web.md`](../../sudu-dealer-web/docs/superpowers/plans/2026-08-11-tenant-provisioning-web.md)
 **Amendment plans (2026-08-18):** api → [`2026-08-18-provisioning-submit-handoff-api.md`](../../sudu-dealer-api/docs/superpowers/plans/2026-08-18-provisioning-submit-handoff-api.md) · web → [`2026-08-18-provisioning-submit-handoff-web.md`](../../sudu-dealer-web/docs/superpowers/plans/2026-08-18-provisioning-submit-handoff-web.md) — **API merges and deploys first**
-**Upstream contract:** [`../sudu-tenant-orchestrator-api-handoff-2026-08-06.md`](../sudu-tenant-orchestrator-api-handoff-2026-08-06.md)
+**Upstream contract:** [`../orchestrator/sudu-tenant-orchestrator-api-handoff-2026-08-06.md`](../orchestrator/sudu-tenant-orchestrator-api-handoff-2026-08-06.md)
 
 > **First of three.** "Tenant management" as scoped on 2026-08-11 covers five subsystems.
 > This spec is **A — provisioning** only. B (tenant mode, quota, approval policy) and C
