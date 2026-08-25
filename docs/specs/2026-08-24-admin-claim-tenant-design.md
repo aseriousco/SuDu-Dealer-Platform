@@ -52,6 +52,27 @@ step and no signal to the dealer beforehand. This is accepted, not overlooked �
 here the admin is the only actor in the loop, so gating them behind their own
 override serves no one.
 
+### On dropping the reason field
+
+`reason` was required when this shipped, on the reasoning that support would later ask why
+a dealer got a tenant they never requested — the same reasoning `release` and `reassign`
+carry on their own `reason` fields.
+
+It came out on 2026-08-25 because the admin console stopped collecting one: the claim
+drawer is a three-field form (dealer, display name, reason) where two of the fields are
+pre-filled or picked, and the free-text box was the only thing standing between the admin
+and the action. Requiring it server-side while the console sends nothing would 400 every
+claim, so the DTO is now `@IsOptional()`.
+
+What this costs, stated plainly: an admin claim's audit row records who did it, which
+dealer received the tenant, which tenant, and when — but no longer *why*. The other claim
+transitions still capture a reason, so admin-claim is now the one claim path whose audit
+trail cannot answer that question. Reinstating it is a two-line change on each side if
+that turns out to matter.
+
+The field stays on the DTO rather than being deleted, so a non-console caller that has a
+reason can still record one.
+
 ### On what this route does *not* verify
 
 `create()` lands `PENDING` and requires `activate()` — that admin-approval step is
@@ -72,7 +93,7 @@ the admin console's own tenants list — the drawer takes it as a prop and has n
 free-text tenant input at all, so an admin cannot mistype one through the app.
 Reaching the vector at all requires a direct API call by an actor who is already a
 platform admin, i.e. someone who already holds the highest privilege in the system.
-The action is audited (actor, target org, tenant, and the admin's stated reason),
+The action is audited (actor, target org, tenant, and timestamp),
 reversible via `release`/`reassign`, and the partial unique index means the blast
 radius is bounded to tenants nobody has claimed yet.
 
@@ -104,8 +125,8 @@ interface AdminClaimTenantBody {
   organizationId: string;
   /** Pre-filled from the admin console's known SaaS name; editable. */
   label: string;
-  /** Required. Why an admin attached a tenant a dealer did not request. */
-  reason: string;
+  /** Optional since 2026-08-25 — see "On dropping the reason field". */
+  reason?: string;
   /** Optional. Defaults to the target org's single root member node. */
   ownerMemberNodeId?: string;
 }
@@ -150,7 +171,8 @@ Response: `201` · the created `DealerClient` (`status: 'ACTIVE'`, `onboardedAt:
 is the row this call *creates*, so — like `TenantProvisioningController.create` —
 it must come from `AuditContext.set({ targetId: row.id, ... })` after the write, not
 from a route param the decorator could read directly. Metadata carries
-`organizationId`, `tenantId`, and `reason`.
+`organizationId` and `tenantId`, plus `reason` when the caller supplies one (the key is
+omitted entirely rather than recorded as null when it is absent).
 
 ### Errors
 
@@ -167,8 +189,8 @@ New module surface within `src/dealer-client/`:
 
 - `AdminClaimDealerClientDto` — `tenantId`, `organizationId`, `label` (`@MaxLength(200)`,
   trimmed, required — whitespace-only input is rejected rather than stored as the
-  dealer-visible client name), `reason` (`@MaxLength(500)`, trimmed, matching
-  `ReassignDealerClientDto`), optional `ownerMemberNodeId`.
+  dealer-visible client name), `reason` (optional, `@MaxLength(500)`, trimmed and
+  non-empty *when supplied*), optional `ownerMemberNodeId`.
 
   This deliberately diverges from `CreateDealerClientDto.label`, which is only
   `@IsString() @MaxLength(200)` — untrimmed and not required-after-trim, so `"   "` is
@@ -192,8 +214,8 @@ component already used from `AdminTenantDetail`.
 
 - `AdminClaimTenantDrawer` — dealer-org picker (`listOrganizations()`, excluding the
   default org and suspended orgs client-side, same as `ReassignTenantDrawer`), a
-  label field pre-filled from `AdminTenant.name` and editable, a required reason
-  field. No subdomain lookup: unlike the dealer's `ClaimTenantForm`, the admin is
+  label field pre-filled from `AdminTenant.name` and editable. No reason field — see
+  "On dropping the reason field". No subdomain lookup: unlike the dealer's `ClaimTenantForm`, the admin is
   claiming a tenant already present in the list with full SaaS data attached.
 - **Row entry point**: `AdminTenantsTable`'s unclaimed-row cell today renders a bare
   `<Badge>SuDu AI</Badge>` with no action (`AdminTenantsTable.tsx`, the
