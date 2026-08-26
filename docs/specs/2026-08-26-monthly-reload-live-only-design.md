@@ -3,7 +3,7 @@
 **Status:** draft
 **Repos:** `sudu-dealer-api` · `sudu-dealer-web`
 **Branches:** `feat/monthly-reload-live-only` — cut on this root repo, off `main`; the same name goes on `sudu-dealer-api` and `sudu-dealer-web` when implementation starts
-**Plans:** api → `sudu-dealer-api/docs/superpowers/plans/…` · web → `sudu-dealer-web/docs/superpowers/plans/…` (neither written yet)
+**Plans:** api → `sudu-dealer-api/docs/superpowers/plans/2026-08-26-monthly-reload-live-only.md` · web → `sudu-dealer-web/docs/superpowers/plans/2026-08-26-monthly-reload-live-only.md`
 
 ## Problem
 
