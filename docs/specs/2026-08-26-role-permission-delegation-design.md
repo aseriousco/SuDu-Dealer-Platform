@@ -120,6 +120,7 @@ guard, so the DTO gains explicit validators in its place.
 |---|---|---|
 | Actor lacks the permission | `403` | `You do not have permission to …` (existing wording) |
 | Target role is not strictly below the actor's | `403` | `You may only manage roles beneath your own` |
+| Target user holds a role above the actor's | `403` | `You may only manage users at or beneath your own role` |
 | New role's parent is not the actor's role or a descendant | `400` | `Parent role not found` — deliberately identical to the existing out-of-scope-parent message, so an unreachable branch is never confirmed |
 | Assigning a user a role not strictly below the actor's | `400` | `Role not found in the target organization` — same reasoning |
 | Grant exceeds the parent's | `403` | `Role exceeds its parent: "<resource>:<action>" …` (existing) |
@@ -180,14 +181,30 @@ True when `targetRoleId` is in `subtreeRoleIds(actor.roleId)` **and** is not `ac
 Reuses the existing recursive CTE. `isPlatformAdmin(actor)` short-circuits it — the vendor
 superuser is the root of every tree it can reach.
 
-| Service · method | Added check |
-|---|---|
-| `RoleService.create` | `dto.parentRoleId` is the actor's own role or below |
-| `RoleService.update` | target below; and if re-parenting, the new parent is the actor's role or below |
-| `RoleService.delete` | target below |
-| `UserService.create` | `dto.roleId` strictly below |
-| `UserService.update` | the member's current role **and** any new `roleId` strictly below |
-| `UserService.suspend` · `unsuspend` · `delete` | the member's role strictly below |
+Two strengths, deliberately different:
+
+- **`assertBelowActor`** — strictly below. Used for mutations of the role *tree*.
+- **`assertAtOrBelowActor`** — the actor's own role, or below. Used for operations on *user
+  records* and for handing out a role.
+
+The split exists because a dealer admin holds their org's ADMIN role. Under a pure strictly-below
+rule they could never create a second admin — ADMIN is not *below* them, it *is* them — so admin
+succession would become a platform-admin-only act, which the org's own last-admin guard already
+assumes is not the case. Handing someone a role you already hold introduces no privilege that was
+not already in the system, so at-or-below is safe there; **editing the tree above yourself is
+escalation**, so that stays strict.
+
+| Service · method | Added check | Strength |
+|---|---|---|
+| `RoleService.create` | `dto.parentRoleId` is the actor's role or below | at or below |
+| `RoleService.update` | target below; a re-parent target is the actor's role or below | **strictly below** |
+| `RoleService.delete` | target below | **strictly below** |
+| `UserService.create` | `dto.roleId` is the actor's role or below | at or below |
+| `UserService.update` | the member's current role **and** any new `roleId` | at or below |
+| `UserService.suspend` · `unsuspend` · `delete` | the member's role | at or below |
+
+The guarantee that matters survives intact: **no actor can hand out, or move a role to, a
+position above its own.**
 
 `RoleService.list` and `get` are unchanged — reading the whole org tree is how a manager picks a
 parent, and the tree is not sensitive. `UserService.list` is likewise unchanged; hiding peers from
@@ -199,10 +216,12 @@ An explicit `assertContained(requested, actor.permissions)` runs alongside the s
 the tree invariant — but it makes the guarantee local to read, and it is the check that still holds
 if the invariant is ever violated by a bad migration.
 
-**Consequences, stated plainly:** nobody edits their own role or a peer's; nobody promotes a user
-to a role at or above their own; a dealer admin still does everything inside its org, because it is
-that tree's root. Two people who both hold ADMIN in one org cannot edit each other — the existing
-last-admin guard already blocks the dangerous half of that, and this makes the rest explicit.
+**Consequences, stated plainly:** nobody edits their own role or a peer's *role definition*;
+nobody promotes a user above their own role; a dealer admin still does everything inside its org,
+because it is that tree's root — including minting a second admin and editing that co-admin's
+record. What a dealer admin loses is the ability to **rename their own ADMIN role**, which becomes
+a platform-admin act. That is a real regression against today's behaviour, accepted because
+self-edit is the escalation path and a role name is cosmetic.
 
 ### `OrganizationService`
 
