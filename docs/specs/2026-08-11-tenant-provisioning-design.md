@@ -293,6 +293,39 @@ N tenants sharing `main` makes that resolution impossible.
 When the orchestrator does start assigning subdomains, `slug` starts carrying a real value
 and the UI switches to it. No migration to undo.
 
+### Amendment 2026-08-27 — the subdomain stopped being absent, and nothing switched
+
+**The section above is superseded.** It was true when written and is now wrong in its
+conclusion, so it is annotated rather than deleted — the reasoning still explains why the code
+looked the way it did.
+
+Its own closing sentence named the trigger: *"When the orchestrator does start assigning
+subdomains, `slug` starts carrying a real value and the UI switches to it."* That happened on
+**2026-08-20**, when `customer_domain` became required on the create body with no fallback and
+the orchestrator began writing it to the tenant and its billing record. Assumption 2 lapsed
+there. **The UI switch it predicted was never made.**
+
+What the stale conclusion cost: `loginHost` stayed a config constant handed identically to
+every row, so the provisioning success screen told every dealer their new tenant logs in at
+`main.mes.sudu.ai` (the default) — never the subdomain they had just provisioned. The claim
+also propagated into a code comment on `tenantLoginHost` and a frontend test asserting *"every
+host we render must be exactly the shared one"*, so the defect was documented as intended
+behaviour in three places at once, this spec included.
+
+Corrected 2026-08-27 in aseriousco/sudu-dealer-api#44 and aseriousco/sudu-dealer-web#47.
+`toView` now prefers the row's own `customerDomain`, and `SAAS_TENANT_LOGIN_HOST` is the
+**fallback** for a row that has none — a claimed tenant, or anything written before
+2026-08-20.
+
+Still accurate from the section above, and unchanged: `dealer_client.slug` stays null, and
+`main` must never be written into it. The per-tenant host lives on `customerDomain`, which is
+recorded on the provisioning request and the dealer client, and is a record — not a routing
+input. Display reads SaaS via `readDomain()`.
+
+**The lesson worth carrying:** this spec correctly predicted its own expiry and named the
+event that would trigger it. Nothing connected that event to this paragraph when it arrived. A
+dated assumption needs a check at the point it lapses, not a sentence hoping someone reads back.
+
 ### Platform-plane endpoints
 
 | Endpoint | Purpose |
