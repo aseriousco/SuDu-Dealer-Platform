@@ -1,9 +1,9 @@
 # Bounded permission delegation — cross-repo design
 
-**Status:** draft
+**Status:** implemented on `feat/role-permission-delegation`, not yet merged
 **Repos:** `sudu-dealer-api` · `sudu-dealer-web`
 **Branches:** `feat/role-permission-delegation` (both), off `main`
-**Plans:** api → `sudu-dealer-api/docs/superpowers/plans/…` · web → `sudu-dealer-web/docs/superpowers/plans/…` (neither written yet)
+**Plans:** api → [`2026-08-26-role-permission-delegation-api.md`](../../sudu-dealer-api/docs/superpowers/plans/2026-08-26-role-permission-delegation-api.md) · web → [`2026-08-26-role-permission-delegation-web.md`](../../sudu-dealer-web/docs/superpowers/plans/2026-08-26-role-permission-delegation-web.md)
 **Parent:** [`sudu-dealer-api/docs/superpowers/specs/2026-07-24-org-user-role-management-design.md`](../../sudu-dealer-api/docs/superpowers/specs/2026-07-24-org-user-role-management-design.md) — this amends its delegation model
 
 ## Problem
