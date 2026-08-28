@@ -127,6 +127,41 @@ Scoping is unchanged and orthogonal: `tenant:view` decides *whether* a role open
 | `POST /api/dealer-clients/demo-slots/request-increase` | `client:create` | `tenant:create` |
 | `POST /api/tenants/:tenantId/reloads` | `credit:reload` | `tenant:reload` |
 | `POST /api/wallet/topups` · `POST /api/wallet/topups/:id/cancel` | `credit:topup` | **unchanged** |
+| `GET /api/dealer-clients` | — | `tenant:view` |
+| `GET /api/tenants/:tenantId/consumption` · `/consumption/daily` | — | `tenant:view` |
+| `GET /api/movements/recent` | — | `tenant:view` |
+| `GET /api/org-consumption` | — | `tenant:view` |
+
+### Amendment 2026-08-28 — the four rows above were missing, and the feature was bypassable without them
+
+The table originally ended at the wallet row. A whole-branch review of the finished
+implementation found four more dealer routes reading the same tenant data with **no permission
+check of any kind**, which made `tenant:view` trivially bypassable: a role denied it still read
+the org's tenant roster through `GET /api/dealer-clients` (`tenantId`, `label`, `status`, owner),
+and still read a tenant's consumption ledger by direct URL while the reload ledger next to it
+answered 403. `GET /api/movements/recent` carries `tenantId` **and** `tenantName` per entry, so
+the roster is enumerable there too.
+
+**This was an enumeration failure, not a scope question.** The rationale that governs them is
+already written in this spec, in the reload-ledger note below: *a role that cannot open the tenant
+list should not reach a tenant's ledger by direct URL.* The consumption ledger is that route's
+structural twin — same `/api/tenants/:tenantId/` prefix, same `getOwnedOrThrow` ownership model,
+same tenant-detail screen. Nothing about the intent changed; the list of routes was short.
+
+**Why it survived every per-task review:** each task's review was correctly scoped to its own
+diff, and these routes appear in no task's diff — a route nobody assigned is a route nobody
+reviews. Worse, the gap was *pinned by three passing tests* asserting "no permission needed for
+reads", whose comments mirrored the reasoning this spec had superseded one file away. That is the
+same failure mode as the `tenantLoginHost` bug: a retired invariant asserted in a comment and a
+test, so the wrong behaviour reads as intended behaviour.
+
+Those tests were not deleted. Each carried two claims — that `reload` is not required for reads
+(still true) and that no permission at all is required (now false by design) — and each was split
+so the surviving half keeps its coverage.
+
+**No existing role lost access.** The migration below grants `tenant:['view','create']` to every
+pre-existing CUSTOM role, so gating these four routes changed nothing for anyone already in the
+system.
 
 **The AI Credits page needs no route of its own.** `useCreditTenants` reads
 `listDealerTenants()` — the same `GET /api/tenants`. Gating that one endpoint gates the credits
