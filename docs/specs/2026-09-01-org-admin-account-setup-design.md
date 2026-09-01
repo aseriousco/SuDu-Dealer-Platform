@@ -131,7 +131,7 @@ Throwing would report a failed org creation for an org that exists, which is the
 **Consequence to state plainly:** in `invite` mode a successful `POST /organizations` does not prove
 an email was sent. That is already true of `POST /users` and is not made worse here.
 
-### D5 — Display name is optional and falls back to the username
+### D5 — Display name mirrors the username until it is edited, and falls back to it server-side
 
 `CreateOrgAdminDto` gains `name?: string` (`@IsOptional @IsString @MaxLength(100)`), mirroring
 `CreateUserDto.name` exactly. The hardcoded
@@ -144,10 +144,45 @@ hint reads the way the user form's already does. **This is why item 15 stays web
 "Display Name (show the default value)" is asking for the placeholder, and the behaviour behind it
 will already exist.
 
-### D6 — Confirm password is a web-only field, and only where a password is typed
+**Amended 2026-09-01, after implementation, at the user's request.** The paragraph above reads
+"show the default value" as a *placeholder*. It is not — what was asked for is a real mirrored
+value:
 
-The API never sees it; there is nothing to add to any DTO. It renders for `set` and `temporary`, and
-not at all for `invite`, where no password is typed and the field would have nothing to confirm.
+> "show the default display name as the username, but if user change the username, you have to
+> change the display name also, but if user change the username and display name, then you no need
+> to change the display name"
+
+So `CreateOrganizationDrawer` fills the display name with the username as it is typed, carries it
+along when the username is corrected, and **stops the moment the admin edits the display name** —
+after which no username change touches it again. Implemented as a `adminNameTouched` flag rather
+than an `adminName === adminUsername` comparison: clearing the field, or typing the username into it
+by hand, both end the mirroring, because the rule is never to overwrite what a person typed.
+
+Two consequences:
+
+1. **The web now sends `name` on nearly every create**, where before it sent one only if someone
+   typed it. The API contract is unchanged and the stored row is identical — the server already
+   resolved `name || username` to the same string. Cleared and left empty, no `name` is sent and the
+   server-side fallback below still applies, so it remains the single source of the rule.
+2. **Item 15 inherits a stronger behaviour than this section originally promised.** It is still
+   web-only, but "the behaviour behind it will already exist" now means the mirroring pattern too —
+   `CreateUserDrawer` should mirror the same way, or the two forms drift, which is the thing
+   splitting 14 and 15 was warned about.
+
+### D6 — Confirm password is a web-only field, and only in `set` mode
+
+The API never sees it; there is nothing to add to any DTO. It renders for `set` only.
+
+**Amended 2026-09-01, after implementation, at the user's request** ("for temporary password, no
+need to confirm password"). This section originally said the field renders for `set` **and**
+`temporary`. It does not: a `temporary` password is one the admin is forced to replace on first
+login, so confirming a throwaway value is friction with nothing to protect, and the field's own
+reveal toggle already covers checking it for a typo. `invite` is unchanged and never had it — no
+password is typed there, so there is nothing to confirm.
+
+**The risk this accepts:** a mistyped temporary password is handed out as if it worked. Whoever
+creates the organization relays a value the account does not have, and the admin cannot sign in to
+reach the forced reset. The recovery is the same as any bad password — reset or re-invite.
 
 The rule is the one the auth screens already use: the mismatch message appears only once something
 has been typed into the confirm box, so an untouched form is never scolded. Submit is blocked on
@@ -175,6 +210,11 @@ half is unshippable until the API half is merged. Same constraint as 17a, and fo
 | `phoneNumber` | optional | unchanged |
 | `passwordSetup` | — | optional, `'set' \| 'invite' \| 'temporary'`; omitted ⇒ `set` |
 | `name` | — | optional, ≤100 chars, free text (spaces allowed); omitted ⇒ the username |
+
+**`name` is unchanged as a contract, but the web's use of it changed** — see D5's amendment: the
+drawer mirrors the username into the field, so `name` is now present on nearly every create instead
+of only when someone typed one. `omitted ⇒ the username` still holds and is still the server's rule;
+it is simply reached less often.
 
 `password` uses `@ValidateIf((o) => o.passwordSetup !== 'invite')`, copied from
 [`create-user.dto.ts:44`](../../sudu-dealer-api/src/user/dto/create-user.dto.ts:44). **Omitting
@@ -205,11 +245,16 @@ becomes `password?: string`, and `passwordSetup?` and `name?` are added, matchin
   where [`:229`](../../sudu-dealer-web/src/components/organizations/OrganizationsView.spec.tsx:229)
   ("creates an org with the org fields AND the nested admin") is the anchor. New cases go beside it
   rather than in a new file, so the existing render helper and mocks are reused.
-- Per mode: `set` sends `passwordSetup: 'set'` with the password; `invite` renders no password or
-  confirm field and sends neither; `temporary` sends both and labels the field as temporary.
+- Per mode: `set` sends `passwordSetup: 'set'` with the password and is the only mode with a confirm
+  field; `invite` renders no password or confirm field and sends neither; `temporary` renders the
+  password field relabelled, no confirm field, and sends the password (D6 as amended).
 - Confirm mismatch blocks submit and states why; an untouched confirm box shows no error.
 - A typed password is dropped when the mode switches to `invite`.
-- Display name omitted sends no `name`; supplied, it is trimmed and sent.
+- The display name mirrors the username while untouched and stops once edited, in both directions:
+  a later username change must not overwrite an edited display name, and must still carry an
+  untouched one (D5 as amended). Order matters in these tests — assert on document order, not just
+  presence, since every other case finds fields by label and would not notice a reorder.
+- Display name cleared sends no `name` (the server falls back); edited, it is trimmed and sent.
 
 `npm run build` is the real typecheck in the web repo — `tsc --noEmit` passes without checking
 anything.
