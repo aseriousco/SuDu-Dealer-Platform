@@ -101,6 +101,22 @@ Deleting the old name is the point, not a side effect: every call site fails to 
 somebody states which one it is. A defaulted parameter would let a site inherit the wrong intent
 silently, and the wrong intent here is a privilege escalation.
 
+**`resolveReadScope` keeps the existing `roleKind === 'ADMIN'` branch alongside the new grant
+check** — `roleKind === 'ADMIN' || hasPermission(actor, 'tenant', 'view_all')`. Revised 2026-09-01
+while writing the plan, having first specified the grant alone.
+
+The grant alone is correct in production: `ActorService` builds `actor.permissions` from
+`effectiveGrant`, which returns the whole ceiling for an ADMIN role. But it is correct only as long
+as every `Actor` reaching this function was built that way, and the failure mode when one is not is
+that an **org admin silently narrows to their own subtree** — a functional regression with no error
+to notice. `scoping.service.spec.ts` already constructs actors with `permissions: {}`, which is
+exactly that shape.
+
+Keeping the branch costs nothing in policy: an ADMIN role's stored permission is ignored and its
+effective grant *is* the ceiling, so it can never be denied `view_all` anyway. The change is then
+**purely additive** — no existing behaviour can regress, and the existing test *"gives a dealer-org
+admin the whole org with no member filter"* stays untouched as the design record for that case.
+
 ### D5 — How the twelve call sites classify
 
 Named by method rather than line, because item 10 will move the lines.
@@ -165,7 +181,7 @@ carries no per-route permission table (item 10's contract table lives inside ite
 
 - `scoping.service.spec.ts`: a CUSTOM role **with** `tenant:view_all` resolves to
   `{ organizationId }` with no `ownerMemberNodeId`; **without** it, to the subtree scope. An ADMIN
-  role still resolves org-wide (now via the ceiling, not via `roleKind`). A platform admin still
+  role still resolves org-wide, and its existing test stays unchanged (see D4). A platform admin still
   resolves `{}`. A **platform CUSTOM** role holding `view_all` resolves to the vendor org, not `{}`
   — this is the test that pins D3 and stops 17b arriving by accident.
 - The existing test *"a leaf role (junior) sees only its own members, not its parent senior"* must
