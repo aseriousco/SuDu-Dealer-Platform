@@ -12,6 +12,11 @@ Branches: `feat/tenant-owner-column` in both repos.
 
 ## How this item changed
 
+**Amended again 2026-09-02**, after a prototype was run against the live database: the Owner column
+got a decided placement (D1), the admin list came into scope (D9, reversing itself), and D4's credit
+formula was corrected — it produced -15182% as written. Those three are the user's decisions or the
+prototype's findings, not redesigns of the item.
+
 It began as *"remove the dealer column, add the created user and role"* — one cell on
 `DealerTenantsTable`. The mockup redesigns the whole page and **contains no owner, agent or role
 anywhere**. Two decisions settled that on 2026-09-01, both the user's:
@@ -51,6 +56,22 @@ Its own column, as the user chose. Two lines: the owner's display name, then the
   Dana Agent                 Manager
 ```
 
+**Placement: its own column, second — immediately after Tenant / Client, before Status.**
+Settled 2026-09-02 by prototype, not on paper. Three placements were built on the real route over
+real data (own column second; own column far right after Claimed; no column, folded into the tenant
+cell as a third line) and the user chose the first. The prototype is the primary source, parked on
+`proto/tenant-list-owner-placement` in the web repo (`31beee7`); `main` and this feature branch
+carry none of it.
+
+On the platform plane the Dealer column comes first and Owner second — see [D9](#d9--both-planes-get-the-redesign).
+
+**The column needs owners that differ, and today they do not.** Every one of JOJO ORG 1's eight
+tenants had the same owner, so the column printed the same two lines on every row — finding B3
+relocated rather than fixed. Three owners across two roles were seeded into the dev database on
+2026-09-02 so the column has something to distinguish. This is worth stating because it is the
+column's whole justification: it earns its width exactly when a dealer's tenants have **different**
+owners, which is the `view_all` case, and nothing in the seed data exercised it before.
+
 Everything below is unchanged from this spec's first version and was verified then:
 
 - **It shows the CURRENT OWNER and must not be labelled "created by".** `DealerClient` has no
@@ -73,6 +94,10 @@ Everything below is unchanged from this spec's first version and was verified th
   and `TopUpTenantStep.tsx:132` still read it.
 - **API:** `DealerTenant.agentRoleName: string | null`, resolved by turning `resolveAgentNames` into
   `resolveOwners` returning `{ name, roleName }` — one more select on a `member` row it already reads.
+- **API, platform plane:** `AdminTenant` carries **no person at all** — only `dealer.organizationName`.
+  So D9's reversal needs `agentName` **and** `agentRoleName` added there too, from the same
+  `ownerMemberNodeId` join. This is work beyond the widening above, which touches `DealerTenant`
+  alone, and it was not in the original three API tasks.
 
 ### D2 — "Last activity" is cut from this pass
 
@@ -121,10 +146,24 @@ Two definitions must be pinned rather than inferred from the mockup:
 - **"Need attention"** = claim not `ACTIVE`, **or** provisioning incomplete, **or** monthly credit at
   or above 90% of its maximum. Any other definition is fine but must be written down; a card whose
   meaning nobody can state is worse than no card.
-- **"AI credits used"** sums `monthlyMax - monthlyRemain` over `monthlyMax`, across rows whose
-  `erpUnavailable` is false. Rows whose registry read failed are **excluded from both sides**, never
-  counted as zero — counting a failed read as zero usage understates the figure and is exactly the
-  trap `erpUnavailable` exists to prevent.
+- **"AI credits used"** sums per-row usage over `monthlyMax`, across rows whose `erpUnavailable` is
+  false. Rows whose registry read failed are **excluded from both sides**, never counted as zero —
+  counting a failed read as zero usage understates the figure and is exactly the trap
+  `erpUnavailable` exists to prevent.
+
+  **Corrected 2026-09-02.** This originally read "sums `monthlyMax - monthlyRemain`", and the
+  prototype rendered that as **-15182%** against the live network. Two cases break it, both real
+  and neither rare:
+
+  - **`monthlyMax <= 0` — no cap on record.** 7 of 37 tenants, one of which ("A Serious AI") holds
+    999,854,637 credits against a max of 0. A row with no denominator cannot contribute to a
+    percentage: **exclude it from both sides**, never zero it. Report the count, the way the
+    unreadable rows are reported.
+  - **`monthlyRemain > monthlyMax` — topped up above the cap.** 4 of 37. Negative usage is not a
+    thing, so per-row usage **clamps into `[0, monthlyMax]`**.
+
+  Both are projection bugs, not data bugs — the numbers are real and the arithmetic was wrong. The
+  same clamp applies to the per-row credit bar, which otherwise renders a negative width.
 
 The cards render from the **unfiltered** list, like `tenantStatusOptions` already does, so narrowing
 a filter never changes what the summary claims about the account.
@@ -166,14 +205,36 @@ nothing is worse than an absent one.
 `list` mapper and `resolveAgentNames`. Rebase onto a `main` that has 17a first. 17b is not a blocker —
 it touches `admin-tenants.service.ts`, and the admin list is out of scope here.
 
-### D9 — The admin tenant list is untouched
+### D9 — Both planes get the redesign
 
-`AdminTenantsTable` keeps its Dealer column and its current layout. That list spans organizations, so
-the org name there is the point rather than the noise, and nothing in the mockup describes it.
+**Reversed 2026-09-02 by the user.** This decision previously read "the admin tenant list is
+untouched", on the reasoning that the mockup describes only the dealer list. The user's instruction
+was the opposite: *"in platform admin also need to change, the different is only add one more for
+dealer org column."*
+
+So the platform-admin list gets the same redesign, plus **one** column: **Dealer**, first, in the
+slot `AdminTenantsTable` already gives it. Everything else — stat cards, chips, the Owner column,
+plan badges, the credit bar, the row menu — is identical to the dealer plane.
+
+That also answers item 16's open *"in all organization — both planes?"* question, and it answers it
+without the blinding the backlog entry feared: the Dealer column **stays** on the admin list, because
+that list spans organizations and the org name there is the point rather than the noise.
+
+**Build it as one row shape with a flag, not two tables.** The two lists having drifted apart is what
+produced the near-duplicate cells they carry today; a second copy of the redesigned row would repeat
+that. The prototype does this with one `showDealer` boolean and one set of cells.
+
+**Open, and caused by this reversal:** the admin list's Approve / Reject / Claim buttons are one click
+today. Folding them into the row menu makes them two. The prototype keeps them wired inside the menu
+so the list stays usable, but whether a primary admin workflow belongs behind `⋯` is a decision
+nobody has made — see [D7](#d7--the-row-action-menu-replaces-nothing).
 
 ## The FE↔BE contract
 
-`GET /tenants` only. Two fields added, none removed or renamed.
+**Two endpoints, not one** — `GET /admin/tenants` joined the change when D9 reversed. No field is
+removed or renamed on either.
+
+### `GET /tenants` (dealer plane)
 
 | Field | Before | After |
 |---|---|---|
@@ -182,12 +243,25 @@ the org name there is the point rather than the noise, and nothing in the mockup
 | `agentRoleName` | — | **new**: `string \| null`, resolved via `member.roleId` (D1) |
 | `provisionedPlan` | `{ planId, planCode, planName, erp, aiCredit, aiService }` | **widened**: each service gains its limits — ERP/AI user limits and the WhatsApp limit (D3) |
 
+### `GET /admin/tenants` (platform plane) — new, from D9
+
+| Field | Before | After |
+|---|---|---|
+| `dealer.organizationName` | `string` | unchanged — still the Dealer column, which stays (D9) |
+| `agentName` | — | **new**: `string \| null`. The admin row carries no person today. |
+| `agentRoleName` | — | **new**: `string \| null`, same `member.roleId` resolution as the dealer plane (D1) |
+| `provisionedPlan` | as above | **widened** identically (D3) |
+
+Both planes resolve the owner from the same `ownerMemberNodeId` → `memberNode` → `member` → `user`
+join `resolveAgentNames` already walks, so this is one resolver serving two callers, not two.
+
 ## Testing
 
 **API**
 
 - The owner's role is reported, resolves to `null` for a member with no role, and both fields are
-  `null` when the node resolves to nobody.
+  `null` when the node resolves to nobody. **On both planes** — the admin list resolves the same
+  fields from the same join (D9).
 - A **renamed role** reports its new name on the next read, and a **desynced `member.role` mirror**
   does not leak into the list. These two are the fence around D1.
 - The widened `provisionedPlan` carries the limits, and a plan with no AI service still serialises.
@@ -197,8 +271,19 @@ the org name there is the point rather than the noise, and nothing in the mockup
 - The Owner cell shows name and role and **not** the organization name — the existing fixture already
   sets `ownerOrgName: 'Acme Dealer'`, so asserting its absence is a real assertion.
 - Name and role degrade to `—` independently.
-- Each stat card against a fixed row set, including a row with `erpUnavailable: true` excluded from
-  the credit percentage rather than counted as zero.
+- Each stat card against a fixed row set, including **all three** exclusion cases the credit
+  percentage has (D4), each of which the prototype hit on live data:
+  - `erpUnavailable: true` — excluded from both sides, not counted as zero.
+  - `monthlyMax === 0` — excluded from both sides. Use a real shape: 999,854,637 remaining against a
+    max of 0, which is what rendered -15182%.
+  - `monthlyRemain > monthlyMax` — contributes 0 used, not a negative. The per-row bar clamps too.
+- **The Owner column tells rows apart.** Assert two rows with different owners render different
+  cells — a fixture where every row shares one owner passes every other assertion here while
+  reproducing the exact noise (finding B3) this column exists to remove.
+- **The platform plane is the dealer layout plus one column**: Dealer first, then Owner, then the
+  rest identical. A `showDealer`-style flag, one row shape — not a second table (D9).
+- **The admin list's real actions survive** the move into the row menu: Claim on an unclaimed
+  tenant, Approve and Reject on a PENDING one, and never Claim on the master tenant.
 - The services filter narrows the table, survives a reload via the URL, and degrades to unfiltered on
   an unknown value.
 - Chips appear per active filter, Clear all empties them, and **a `FilterBar` consumer that passes no
@@ -207,12 +292,22 @@ the org name there is the point rather than the noise, and nothing in the mockup
 
 `npm run build` is the real typecheck; `tsc --noEmit` exits 0 having checked nothing.
 
+## Open — raised by the mockup, decided by nobody
+
+Neither blocks the build, and both are one-line decisions that change what ships.
+
+- **The credit cell flips meaning.** Today's table leads with credits *remaining* (`2,938`); the
+  mockup leads with credits *used* (`7,062 / 10,000 · 71%`) and demotes remaining to a subtitle. D4
+  pins the meaning of the stat *card* and says nothing about the *cell*. The prototype follows the
+  mockup. If that flip was not intended, this is the moment to say so — every row is affected.
+- **Approve / Reject behind the row menu.** D9's reversal puts the admin list's primary workflow one
+  click further away. See D9.
+
 ## Non-goals
 
 - **"Last activity."** D2 — no data source exists.
 - **MES / WMS service badges.** D3 — not on the dealer row shape.
 - **Live seat usage.** D3 — the numbers available are plan limits.
-- **The admin tenant list.** D9.
 - **A creator column.** D1 — no creator is recorded, and after a cross-org reassign it would name
   someone at another dealer.
 - **A new aggregate endpoint for the stat cards.** D4.
