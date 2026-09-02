@@ -130,6 +130,18 @@ names only. So seat counts are an API field addition.
 note what they are: the plan's **limits**, not live seat usage. The mockup's wording reads as
 allowances and must not be relabelled as usage without a source for it.
 
+**One plan-level number ships, not the mockup's three — and the reason is narrower than it looked**
+(established 2026-09-02, during implementation). The per-component numbers are not missing:
+`ERP_FIELDS` and `SERVICE_FIELDS` in `sudu-plan-catalog.reader.ts` **both already request
+`tenant_user_limit`**, and the fixtures copied verbatim from dev carry ERP `30` and AI-service `2`.
+Our own projection drops them — `toErp`/`toService` never read the field.
+
+What is genuinely missing is a verified MEANING. Dev returns `30` on the ERP row and `30` on the plan
+row, which reads equally as "30 ERP seats" and as a denormalised copy of the plan total. Showing
+`30 ERP users · 2 AI users` when the truth is `30 users total` invents a distinction in a customer's
+entitlements — worse than one honest number. **Settling it needs a probe against the live catalog**,
+the same kind D2 describes. Until then the row reads `20 users · 3 WhatsApp`.
+
 **MES and WMS badges are not in scope.** `packageType: 'WMS'` exists upstream in provisioning, but
 `ProvisionedPlan` models exactly three service slots (erp, aiCredit, aiService) and nothing on the
 dealer row distinguishes an MES or WMS package. Adding them is a row-shape change nobody has
@@ -241,7 +253,7 @@ removed or renamed on either.
 | `ownerOrgName` | `string` | unchanged — still sent, no longer in the table cell |
 | `agentName` | `string \| null` | unchanged |
 | `agentRoleName` | — | **new**: `string \| null`, resolved via `member.roleId` (D1) |
-| `provisionedPlan` | `{ planId, planCode, planName, erp, aiCredit, aiService }` | **widened**: each service gains its limits — ERP/AI user limits and the WhatsApp limit (D3) |
+| `provisionedPlan` | `{ planId, planCode, planName, erp, aiCredit, aiService }` | **widened**: one plan-level `userLimit`, plus the AI service's `whatsappLimit` and `accIntegration` (D3). **Not** per-component ERP/AI user limits — this row promised them until 2026-09-02; see D3 for why they are withheld. |
 
 ### `GET /admin/tenants` (platform plane) — new, from D9
 
