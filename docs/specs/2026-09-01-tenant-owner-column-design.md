@@ -350,6 +350,29 @@ Two consequences worth writing down, because both are easy to get wrong:
   the master tenant — the same three conditions the button used. `RowMenu` is shared with the
   dealer plane, so it takes a bound callback and never decides this itself.
 
+## D11 — the row-menu trigger reads "More", and opens on hover
+
+**Decided 2026-09-03, by the product owner, in review of the running build.**
+
+The trigger is the word "More", with no `⋯` glyph. Its accessible name keeps the row —
+"More actions for JUNA" — because a page of ten rows would otherwise present ten buttons with
+identical names; "More" remains a prefix, which is what WCAG 2.5.3 (Label in Name) requires.
+
+It opens on hover and closes when the pointer leaves. **Hover is additive, not a replacement.**
+Click and Enter must both keep working: a touch device has no hover at all, and a keyboard user
+never produces one. Each has its own test for that reason.
+
+Two timings are load-bearing and should not be "tidied" to the library defaults:
+
+- **`closeDelay` 150ms**, against Base UI's default of 0. The popup is offset 4px below the
+  trigger, so at 0 the menu closes in the gap the pointer must cross to reach its own items —
+  making it unopenable by mouse. Reverting it to 0 fails three tests.
+- **`delay` stays at the 100ms default**, so sweeping the pointer down the table does not flash a
+  menu on every row it passes.
+
+In Base UI 1.6.0 `openOnHover` is a prop of `Menu.Trigger`, not `Menu.Root`; `Menu.Root` no longer
+accepts it, though `MenuSubmenuRoot` still omits it from an inherited type.
+
 ## Non-goals
 
 - **"Last activity."** D2 — no data source exists.
