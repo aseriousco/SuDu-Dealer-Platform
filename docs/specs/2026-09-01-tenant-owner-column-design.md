@@ -358,9 +358,9 @@ The trigger is the word "More", with no `⋯` glyph. Its accessible name keeps t
 "More actions for JUNA" — because a page of ten rows would otherwise present ten buttons with
 identical names; "More" remains a prefix, which is what WCAG 2.5.3 (Label in Name) requires.
 
-It opens on hover and closes when the pointer leaves. **Hover is additive, not a replacement.**
-Click and Enter must both keep working: a touch device has no hover at all, and a keyboard user
-never produces one. Each has its own test for that reason.
+It opens on hover and closes when the pointer leaves. ~~Hover is additive, not a replacement.
+Click and Enter must both keep working.~~ **Superseded by D12** — a press no longer opens it at
+all. Enter and Space still do.
 
 Two timings are load-bearing and should not be "tidied" to the library defaults:
 
@@ -372,6 +372,39 @@ Two timings are load-bearing and should not be "tidied" to the library defaults:
 
 In Base UI 1.6.0 `openOnHover` is a prop of `Menu.Trigger`, not `Menu.Root`; `Menu.Root` no longer
 accepts it, though `MenuSubmenuRoot` still omits it from an inherited type.
+
+## D12 — a press does not open the row menu; hover is the only pointer route
+
+**Decided 2026-09-03, by the product owner, on seeing the behaviour.** Reverses half of D11.
+
+Base UI treats a press-open as *sticky*: once opened by a press, the menu stops honouring
+hover-out. Pressing the trigger and then moving the pointer away therefore left the menu
+stranded open with nothing left to close it. Suppressing the press makes hover the only pointer
+route, so hover closes what hover opened.
+
+**Both `mousedown` and `click` must be suppressed.** They open the menu by independent routes and
+cancelling either alone leaves the other live. Base UI's handler is cancelled with
+`preventBaseUIHandler()`; `stopPropagation` does nothing to it, because it is merged onto the
+same element rather than listening from an ancestor.
+
+**The click suppression is guarded on `e.detail > 0`.** Enter and Space reach a button *as a
+click*, so a blanket suppression removes the keyboard along with the mouse. A pointer click
+reports `detail >= 1`; a keyboard-generated one reports 0.
+
+### Known cost: the menu cannot be opened by touch
+
+A tap produces `mousedown`/`click` and never a hover, so on a touch device the row menu — and
+with it Claim, per D10 — has no way to open. This is accepted, not overlooked. The remedy, if it
+matters later, is to suppress only where hover genuinely exists (`matchMedia('(hover: hover)')`)
+and let a press through on coarse pointers.
+
+### Two test traps worth remembering
+
+- `userEvent.click` **moves the pointer onto the element first**, so it opens the menu by hover.
+  A test that clicks to open passes no matter what the press does — that is exactly how a test
+  asserting "still opens on click" survived this change while asserting the opposite of the truth.
+- `fireEvent.click` **defaults `detail` to 0**, which is what a keyboard click reports. A press
+  test without `{ detail: 1 }` fires the one event the component deliberately lets through.
 
 ## Non-goals
 
