@@ -8,9 +8,17 @@
 > format validation"
 
 That was answered as an audit (item 27 in the task backlog). This spec is the change that
-follows it, scoped by a later instruction: **fix the six disagreements, and require a minimum
-of five characters for every username.** Phone *format* was explicitly deferred — see
-[Non-goals](#non-goals).
+follows it, scoped by two later instructions:
+
+1. **Fix the six disagreements, and require a minimum of five characters for every username.**
+   Phone *format* was explicitly deferred — see [Non-goals](#non-goals).
+2. **Apply the limit rule to every related form** — named explicitly: forgot password, the
+   organization drawer, the user drawer, change password.
+
+The second widened this well past the two create drawers the audit measured, and it is the
+right instinct: a limit that holds on create and not on edit is disagreement #6 all over again.
+[D7](#d7--maxlength-mirrors-the-dto-a-counter-only-where-the-cap-is-tight) is the full list, and
+[D7b](#d7b--sign-in-and-forgot-password-get-nothing) is the one place the answer is "nothing".
 
 ## The correction this spec starts from
 
@@ -174,9 +182,11 @@ only email, phone and notes.
 
 - **`notes`** gains `@MaxLength(ACCOUNT_FIELD_MAX.notes)` in `CreateUserDto`, `UpdateUserDto`
   and `UpdateMeDto`. Today an unbounded string reaches a `text` column on three paths.
-- **The web password field gains a maximum.** `password.length < 8` is the whole client rule;
-  a 200-character password is accepted, submitted, and 400s. Both create drawers gain the
-  128 bound.
+- **Every web password field gains a maximum.** `length >= 8` is the whole client rule on all
+  six of them, so a 200-character password is accepted, submitted, and 400s. The API side is
+  already right — `ChangePasswordDto` and `SetInitialPasswordDto` both carry 8–128 — so this is
+  purely a missing mirror. The six surfaces are listed in [D7](#d7--maxlength-mirrors-the-dto-a-counter-only-where-the-cap-is-tight);
+  `login.tsx` is deliberately not among them ([D7b](#d7b--sign-in-and-forgot-password-get-nothing)).
 
 ### D6 — A validation failure is never a `409`
 
@@ -204,10 +214,34 @@ own sentence verbatim, precisely because a DTO limit may have no HTML mirror. Th
 the public form is stricter than the staff forms is not a coincidence: it is the only form
 following a policy nobody wrote down for the others.
 
-**The account forms adopt the same two-part policy.** `maxLength` on every capped field, and
+**Every account form adopts the same two-part policy.** `maxLength` on every capped field, and
 the server's message shown verbatim as the backstop — the second half already works, since
 `errorMessage()` returns `err.message` and `extractError` joins class-validator's `string[]`
 into one sentence.
+
+**The surfaces, in full.** Not just the two create drawers — a limit that holds on create and
+not on edit is disagreement #6 all over again.
+
+| form | fields it mirrors | note |
+|---|---|---|
+| `CreateUserDrawer` | username 5–30, name 100, email 320, phone 32, notes 2000, password ≤128 | already calls `usernameError()` |
+| `CreateOrganizationDrawer` | org name 200, contactEmail 320, billingAddress 500, invoiceNotes 2000 + the six admin fields | |
+| `OrganizationFields` | name 200, contactEmail 320, billingAddress 500, invoiceNotes 2000 | **one edit covers two screens** — `EditOrganizationDrawer` and `MyOrganizationPanel` both render it |
+| `EditUserDrawer` | name 100, email 320, phone 32, notes 2000 | username is read-only and stays so |
+| `ProfileForm` | email 320, phone 32, notes 2000 | no `name` — `UpdateMeDto` carries none |
+| `ChangePasswordForm` | new password ≤128 | |
+| `ForcedPasswordReset` | new + confirm ≤128 | |
+| `reset-password` route | new + confirm ≤128 | |
+
+**Every password field in the app is `length >= 8` and nothing else.** There is no maximum on
+any of them, against a DTO that stops at 128 on all four paths. That single gap is repeated
+six times.
+
+**One component stands in the way.** There are two password inputs:
+`ui/password-input.tsx` spreads its rest props, so `maxLength` reaches the `<input>` untouched;
+`auth/PasswordInput.tsx` has a **closed prop interface** (`id`, `label`, `value`, `onChange`,
+`autoComplete`, `required`) and silently accepts no such prop. It gains `maxLength?: number`.
+That two components exist at all is duplication worth its own item — not this one's to fix.
 
 **`FieldLimit` is not extended to these forms.** It exists because the orchestrator's caps are
 *tight* — 10 characters for Real name — and `maxLength` swallows the refused keystroke in
@@ -220,6 +254,20 @@ Two rules `maxLength` cannot express, which therefore stay as inline text:
   hint change (3 → 5).
 - **The lowercasing.** better-auth stores `username` lowercased and keeps the typed form in
   `displayUsername`. No form says so today, and `USERNAME_HINT` is where it belongs.
+
+### D7b — Sign-in and forgot-password get nothing
+
+`login.tsx` and `forgot-password.tsx` both hold an email field, and `login.tsx` a password
+field. **None of them gains a limit.**
+
+These are *lookups*, not creates — principle 2 again, and the same reasoning as D1. A
+`maxLength` on the sign-in password silently truncates a paste from a password manager, and
+buys nothing: sign-in does not validate length, it verifies a hash, so a truncated paste fails
+as "wrong password" with no way to tell why. The email field on either screen is looking up an
+account that already exists; a cap there can only refuse to find one.
+
+This is the same rule that keeps `SUBDOMAIN_RE` and `username()` untouched. A create rule on a
+lookup path strands whatever already exists.
 
 ### D8 — Phone: the length is aligned, the format is untouched
 
@@ -245,14 +293,18 @@ for, and it belongs to whoever next has a reason.
 
 ### D10 — The API merges before the web
 
-The API half has no conflict with anything in flight. The web half touches
-`CreateOrganizationDrawer` (**item 22**, implemented, unmerged, still blocked on its visual
-check) and `CreateUserDrawer` (**item 21**, not started, and its own spec already plans to move
-this exact markup).
+The API half has no conflict with anything in flight and **lands first and independently.**
 
-So: **the API plan lands first and independently.** The web plan rebases onto `main` after item
-22 merges. Landing them in the other order guarantees a conflict in two files that two other
-items are already rewriting.
+Of the eight web forms in D7, exactly **two are contested**: `CreateOrganizationDrawer`
+(**item 22**, implemented and reviewed, unmerged) and `CreateUserDrawer` (**item 21**, not
+started, and its own spec already plans to move this exact markup). The other six —
+`OrganizationFields` (which covers two screens), `EditUserDrawer`, `ProfileForm`,
+`ChangePasswordForm`, `ForcedPasswordReset`, `reset-password` — plus `auth/PasswordInput`, are
+touched by nothing else.
+
+**So the web plan splits along that line**, and the uncontested six do not wait: they are a task
+that can land any time. Only the two create drawers rebase onto `main` after item 22 merges.
+Landing those two earlier guarantees a conflict in files two other items are already rewriting.
 
 ## The FE↔BE contract
 
@@ -282,7 +334,15 @@ mismatch by configuring the plugin and locking out the short accounts.
 - **The narrowed catch (D6)** gets a test that a non-duplicate `createUser` failure is not
   reported as a `409`.
 - **Web** — `username.spec.ts` gains the 4-character case. The attribute mirror is asserted the
-  way `partner-interest.spec.tsx` already asserts it, so the two forms are checked identically.
+  way `partner-interest.spec.tsx:167` already asserts it, so every form is checked the same way:
+  read the field by its label, assert the attribute. Eight forms, one shape of test.
+- **The password maximum needs asserting on all six**, not one. It is the same missing mirror
+  repeated, and a test on only the create drawers would leave the change half-made and look
+  finished. `login.tsx` gets the opposite test — that it carries **no** `maxLength` — so D7b is
+  pinned rather than trusted, and nobody "completes" the mirror later by adding it.
+- **`auth/PasswordInput` gets a test that it forwards `maxLength`.** A prop added to a closed
+  interface but not threaded to the `<input>` fails silently, which is exactly the failure mode
+  this whole spec is about.
 - **The counting caveat.** Both repos' suites are large; a plan that quotes a baseline total
   must measure it on the branch rather than carry a number from another document.
 
