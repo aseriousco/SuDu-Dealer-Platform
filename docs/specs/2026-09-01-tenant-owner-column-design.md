@@ -155,9 +155,23 @@ them — which they would if a separate aggregate endpoint were introduced.
 
 Two definitions must be pinned rather than inferred from the mockup:
 
-- **"Need attention"** = claim not `ACTIVE`, **or** provisioning incomplete, **or** monthly credit at
-  or above 90% of its maximum. Any other definition is fine but must be written down; a card whose
-  meaning nobody can state is worse than no card.
+- **"Need attention"** = the claim is unsettled, **or** monthly credit is at or above 90% of its
+  maximum. "Unsettled" means not `ACTIVE` on the dealer plane, and neither `ACTIVE` nor `UNCLAIMED`
+  on the platform plane — a tenant SuDu AI holds directly is a normal state, not a problem, and
+  counting those made a prototype's card read 30 of 37, which is noise rather than signal.
+
+  **"Provisioning incomplete" was a third reason here until 2026-09-02, and it was removed because it
+  is not computable.** It was to be read off `provisionedPlan === null`, but that field's own contract
+  says null conflates four causes — a tenant created outside this platform, a request predating
+  required `planId`, **a tenant this org claimed rather than provisioned**, and an unreadable plan
+  catalog — and that they are "indistinguishable here on purpose: they all mean *we cannot tell
+  you*". The row already renders that state honestly as **"Not provisioned here"**; a card calling the
+  same rows "needs attention" would contradict the row beneath it, flag every row during an ERP
+  outage, and be permanently unclearable for a dealer who claimed rather than provisioned. Restoring
+  the reason needs a real provisioning-state field on the wire, not this null.
+
+  Any other definition is fine but must be written down; a card whose meaning nobody can state is
+  worse than no card.
 - **"AI credits used"** sums per-row usage over `monthlyMax`, across rows whose `erpUnavailable` is
   false. Rows whose registry read failed are **excluded from both sides**, never counted as zero —
   counting a failed read as zero usage understates the figure and is exactly the trap
