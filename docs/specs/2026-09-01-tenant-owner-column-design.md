@@ -160,7 +160,7 @@ Two definitions must be pinned rather than inferred from the mockup:
   on the platform plane — a tenant SuDu AI holds directly is a normal state, not a problem, and
   counting those made a prototype's card read 30 of 37, which is noise rather than signal.
 
-  **"Provisioning incomplete" was a third reason here until 2026-09-02, and it was removed because it
+  **"Provisioning incomplete" was a third reason here until 2026-09-03, and it was removed because it
   is not computable.** It was to be read off `provisionedPlan === null`, but that field's own contract
   says null conflates four causes — a tenant created outside this platform, a request predating
   required `planId`, **a tenant this org claimed rather than provisioned**, and an unreadable plan
