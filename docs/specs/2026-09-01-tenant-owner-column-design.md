@@ -327,7 +327,28 @@ Neither blocks the build, and both are one-line decisions that change what ships
   pins the meaning of the stat *card* and says nothing about the *cell*. The prototype follows the
   mockup. If that flip was not intended, this is the moment to say so — every row is affected.
 - **Approve / Reject behind the row menu.** D9's reversal puts the admin list's primary workflow one
-  click further away. See D9.
+  click further away. See D9. **Still open** — see D10, which settled only the Claim half.
+
+## D10 — Claim moves into the `⋯` row menu; Approve/Reject do not
+
+**Decided 2026-09-03, by the product owner, in review of the running build.**
+
+Claim is no longer a button in the actions column. It is a `Claim tenant` item in the row menu,
+alongside `Open tenant`.
+
+Approve and Reject stay as buttons at one click. They are the two halves of a single decision and
+reading them at a glance is what the column is for; the open question above is about them, and it
+stays open. Claim is different: it opens a drawer and begins a multi-step flow, so a second click
+to reach it costs nothing that matters.
+
+Two consequences worth writing down, because both are easy to get wrong:
+
+- **The menu is no longer conditional on a drill-in destination.** It renders when it has at least
+  one item, from either source. A caller passing no `onSelect` still gets the menu on a claimable
+  row — otherwise this change would have silently deleted Claim for that caller.
+- **Claimability is unchanged and stays on the admin plane.** Unclaimed, `onClaim` supplied, and not
+  the master tenant — the same three conditions the button used. `RowMenu` is shared with the
+  dealer plane, so it takes a bound callback and never decides this itself.
 
 ## Non-goals
 
