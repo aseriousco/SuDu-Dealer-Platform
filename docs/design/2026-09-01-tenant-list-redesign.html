@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SuDu.AI — Tenant Management</title>
+  <style>
+    :root {
+      --bg: #f6f8f8;
+      --surface: #ffffff;
+      --surface-2: #f9fbfb;
+      --text: #17201f;
+      --muted: #697674;
+      --line: #e4e9e8;
+      --line-2: #edf1f0;
+      --green: #0aa37f;
+      --green-strong: #078a6b;
+      --green-soft: #e8f7f2;
+      --green-ghost: #f2fbf8;
+      --amber: #b87a12;
+      --amber-soft: #fff7e6;
+      --red: #b64141;
+      --red-soft: #fff0f0;
+      --blue: #3766c7;
+      --blue-soft: #eef3ff;
+      --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 6px 24px rgba(16, 24, 40, .04);
+      --radius: 14px;
+      --sidebar: 228px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      font-size: 14px;
+    }
+
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    a { color: inherit; text-decoration: none; }
+
+    .app { min-height: 100vh; display: grid; grid-template-columns: var(--sidebar) 1fr; }
+
+    /* Sidebar */
+    .sidebar {
+      position: sticky; top: 0; height: 100vh;
+      background: var(--surface);
+      border-right: 1px solid var(--line);
+      display: flex; flex-direction: column;
+      padding: 18px 14px 16px;
+      z-index: 10;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; padding: 5px 8px 18px; }
+    .brand-mark {
+      width: 32px; height: 24px; border-radius: 12px 12px 7px 7px;
+      background: #101514; position: relative; transform: skewX(-8deg);
+    }
+    .brand-mark:before, .brand-mark:after {
+      content: ""; position: absolute; background: white; border-radius: 50%;
+    }
+    .brand-mark:before { width: 7px; height: 7px; left: 7px; top: 8px; }
+    .brand-mark:after { width: 7px; height: 7px; right: 7px; top: 8px; }
+    .brand-name { font-size: 20px; font-weight: 800; letter-spacing: -.5px; }
+
+    .nav-section { margin-top: 6px; }
+    .nav-label { padding: 12px 10px 7px; color: #97a09f; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px; padding: 10px 10px;
+      color: #566260; border-radius: 10px; margin: 2px 0; font-weight: 540;
+    }
+    .nav-item:hover { background: #f5f8f7; color: #27302f; }
+    .nav-item.active { background: var(--green-soft); color: var(--green-strong); font-weight: 650; }
+    .nav-item svg { width: 18px; height: 18px; flex: 0 0 auto; }
+    .nav-sep { border: 0; border-top: 1px solid var(--line); margin: 14px 0 10px; }
+    .sidebar-spacer { flex: 1; }
+    .profile {
+      display: flex; align-items: center; gap: 10px; padding: 12px 8px 2px;
+      border-top: 1px solid var(--line); margin-top: 12px; padding-top: 16px;
+    }
+    .avatar-sm { width: 30px; height: 30px; border-radius: 50%; background: #dff2e8; color: #2d724f; display: grid; place-items: center; font-weight: 700; font-size: 12px; }
+    .profile strong { display: block; font-size: 13px; }
+    .profile span { color: var(--muted); font-size: 11px; }
+
+    /* Main */
+    .main { min-width: 0; }
+    .topbar {
+      height: 62px; background: rgba(255,255,255,.94); border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; justify-content: space-between; padding: 0 30px;
+      position: sticky; top: 0; z-index: 8; backdrop-filter: blur(10px);
+    }
+    .crumbs { display: flex; gap: 9px; align-items: center; color: #5b6664; }
+    .crumbs b { color: var(--text); }
+    .top-search {
+      width: min(430px, 40vw); display: flex; align-items: center; gap: 8px; background: #fafcfc;
+      border: 1px solid var(--line); border-radius: 10px; padding: 8px 11px; color: #858f8d;
+    }
+    .top-search input { border: 0; outline: 0; background: transparent; width: 100%; color: var(--text); }
+    .top-actions { display: flex; align-items: center; gap: 8px; }
+    .icon-btn { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid transparent; background: transparent; border-radius: 9px; color: #6a7472; }
+    .icon-btn:hover { background: #f4f7f6; border-color: var(--line); }
+    .user-pill { display: flex; align-items: center; gap: 8px; margin-left: 5px; }
+
+    .content { padding: 30px; max-width: 1500px; margin: 0 auto; }
+
+    .page-head { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; margin-bottom: 22px; }
+    .eyebrow { color: var(--green-strong); font-weight: 700; font-size: 12px; margin-bottom: 7px; }
+    h1 { margin: 0; font-size: 30px; letter-spacing: -.75px; line-height: 1.12; }
+    .page-head p { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
+    .primary {
+      display: inline-flex; align-items: center; gap: 8px; border: 0; color: white; background: var(--green);
+      padding: 10px 15px; border-radius: 10px; font-weight: 650; box-shadow: 0 1px 2px rgba(0,0,0,.05);
+    }
+    .primary:hover { background: var(--green-strong); }
+
+    .summary-grid { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 12px; margin-bottom: 18px; }
+    .summary-card {
+      background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 17px;
+      display: flex; align-items: center; justify-content: space-between; min-width: 0;
+    }
+    .summary-card .label { color: var(--muted); font-size: 12px; margin-bottom: 5px; }
+    .summary-card .value { font-size: 23px; line-height: 1; font-weight: 760; letter-spacing: -.5px; }
+    .summary-card .sub { color: var(--muted); font-size: 11px; margin-top: 7px; }
+    .summary-icon { width: 38px; height: 38px; border-radius: 11px; background: var(--green-ghost); color: var(--green-strong); display: grid; place-items: center; }
+    .summary-card.attention .summary-icon { background: var(--amber-soft); color: var(--amber); }
+    .summary-card.credit .summary-icon { background: var(--blue-soft); color: var(--blue); }
+
+    .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: visible; }
+    .toolbar { padding: 15px; border-bottom: 1px solid var(--line); }
+    .toolbar-row { display: grid; grid-template-columns: minmax(280px, 1.5fr) repeat(4, minmax(130px, .55fr)) auto; gap: 9px; align-items: center; }
+    .field, .select-wrap {
+      height: 40px; border: 1px solid var(--line); background: #fff; border-radius: 9px; display: flex; align-items: center; gap: 8px; padding: 0 11px;
+      color: #7a8583;
+    }
+    .field:focus-within, .select-wrap:focus-within { border-color: #a9d6ca; box-shadow: 0 0 0 3px rgba(10,163,127,.08); }
+    .field input { width: 100%; border: 0; outline: 0; min-width: 0; color: var(--text); }
+    .select-wrap select { width: 100%; border: 0; outline: 0; background: transparent; color: #394341; appearance: none; cursor: pointer; }
+    .filter-btn { height: 40px; display: inline-flex; gap: 8px; align-items: center; justify-content: center; border: 1px solid var(--line); background: #fff; border-radius: 9px; padding: 0 13px; color: #394341; font-weight: 600; }
+    .filter-btn:hover { background: #f7f9f8; }
+
+    .filter-chips { padding-top: 11px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .filter-chips .filter-label { color: #8a9492; font-size: 12px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 8px; background: #f3f7f6; color: #52605d; border: 1px solid #e7eeec; font-size: 12px; }
+    .chip button { border: 0; background: transparent; color: #83908d; padding: 0; line-height: 1; }
+    .clear-all { color: var(--green-strong); background: transparent; border: 0; font-size: 12px; padding: 4px 2px; }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 1080px; }
+    thead th {
+      text-align: left; padding: 11px 16px; font-size: 10.5px; letter-spacing: .055em; text-transform: uppercase; color: #88918f; background: #fbfcfc;
+      border-bottom: 1px solid var(--line); font-weight: 720;
+    }
+    tbody td { padding: 15px 16px; border-bottom: 1px solid var(--line-2); vertical-align: middle; }
+    tbody tr { transition: background .15s ease; }
+    tbody tr:hover { background: #fbfdfc; }
+    tbody tr:last-child td { border-bottom: 0; }
+
+    .tenant-cell { display: flex; align-items: center; gap: 12px; min-width: 260px; }
+    .tenant-avatar { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; background: var(--green-soft); color: var(--green-strong); font-weight: 750; font-size: 12px; flex: 0 0 auto; }
+    .tenant-main { min-width: 0; }
+    .tenant-name { font-weight: 680; margin-bottom: 3px; color: #1e2726; }
+    .tenant-meta { color: #7f8a88; font-size: 11.5px; display: flex; gap: 6px; align-items: center; min-width: 0; }
+    .tenant-meta .domain { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px; }
+
+    .status { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 5px 8px; font-size: 11.5px; font-weight: 650; border: 1px solid transparent; white-space: nowrap; }
+    .status:before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .85; }
+    .live { color: #16815f; background: #edf9f5; border-color: #d7f0e7; }
+    .testing { color: #78631f; background: #fff9e8; border-color: #f3e7bb; }
+    .setup { color: #4769a9; background: #f0f5ff; border-color: #dce7fb; }
+    .suspended { color: #9f4747; background: #fff2f2; border-color: #f4d9d9; }
+
+    .service-cell { min-width: 250px; }
+    .plan-line { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+    .plan-pill { padding: 4px 7px; border-radius: 7px; background: #eef7f4; color: #276a59; font-size: 11px; font-weight: 650; }
+    .service-pill { padding: 4px 7px; border-radius: 7px; background: #f4f6f6; color: #626d6b; font-size: 11px; border: 1px solid #e7ebea; }
+    .service-sub { color: #8b9693; font-size: 11px; }
+
+    .credit-cell { min-width: 190px; }
+    .credit-top { display: flex; justify-content: space-between; gap: 10px; font-size: 11.5px; margin-bottom: 7px; }
+    .credit-top b { font-size: 12px; color: #313b39; }
+    .credit-top span { color: #7e8987; }
+    .bar { height: 7px; border-radius: 999px; background: #eef2f1; overflow: hidden; }
+    .bar > span { display: block; height: 100%; border-radius: inherit; background: var(--green); }
+    .bar.warn > span { background: #d9a23a; }
+    .bar.danger > span { background: #cf6666; }
+    .credit-note { margin-top: 5px; font-size: 10.8px; color: #8a9592; }
+
+    .activity strong { display: block; font-size: 12px; font-weight: 650; }
+    .activity span { color: #89928f; font-size: 11px; }
+    .claimed { color: #616d6a; font-size: 12px; white-space: nowrap; }
+
+    .menu-wrap { position: relative; }
+    .more { width: 32px; height: 32px; border-radius: 8px; border: 1px solid transparent; background: transparent; display: grid; place-items: center; color: #6e7977; }
+    .more:hover, .more.active { border-color: var(--line); background: #f7f9f8; }
+    .menu {
+      display: none; position: absolute; right: 0; top: 36px; width: 178px; padding: 6px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 34px rgba(15,23,42,.12); z-index: 20;
+    }
+    .menu.open { display: block; }
+    .menu button { width: 100%; border: 0; background: transparent; text-align: left; padding: 8px 9px; border-radius: 7px; color: #3d4745; font-size: 12px; }
+    .menu button:hover { background: #f4f7f6; }
+    .menu .danger-item { color: #a94848; }
+    .menu hr { border: 0; border-top: 1px solid var(--line); margin: 5px 0; }
+
+    .empty { display: none; text-align: center; padding: 54px 20px; color: var(--muted); }
+    .empty strong { display: block; color: #3e4745; margin-bottom: 5px; }
+
+    .footer { display: flex; justify-content: space-between; align-items: center; padding: 13px 15px; border-top: 1px solid var(--line); gap: 12px; }
+    .footer-left { display: flex; align-items: center; gap: 10px; color: #7a8583; font-size: 12px; }
+    .footer select { border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 6px 8px; color: #4f5a57; }
+    .pager { display: flex; align-items: center; gap: 5px; }
+    .page-btn { width: 31px; height: 31px; border: 1px solid var(--line); background: #fff; border-radius: 8px; display: grid; place-items: center; color: #6f7a78; }
+    .page-btn.active { background: var(--green); color: white; border-color: var(--green); }
+    .page-btn:disabled { opacity: .4; cursor: default; }
+
+    .toast {
+      position: fixed; right: 24px; bottom: 24px; background: #15201e; color: #fff; padding: 11px 14px; border-radius: 10px; font-size: 12px; box-shadow: 0 12px 30px rgba(0,0,0,.18);
+      transform: translateY(20px); opacity: 0; pointer-events: none; transition: .2s ease; z-index: 50;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+
+    @media (max-width: 1180px) {
+      :root { --sidebar: 82px; }
+      .brand-name, .nav-item span, .nav-label, .profile div:last-child { display: none; }
+      .brand { justify-content: center; padding-left: 0; padding-right: 0; }
+      .nav-item { justify-content: center; padding: 11px; }
+      .profile { justify-content: center; }
+      .summary-grid { grid-template-columns: repeat(3, minmax(0,1fr)); }
+      .toolbar-row { grid-template-columns: minmax(260px, 1.3fr) repeat(2, minmax(130px,.5fr)) auto; }
+      .toolbar-row .select-wrap:nth-of-type(4), .toolbar-row .select-wrap:nth-of-type(5) { display: none; }
+    }
+
+    @media (max-width: 820px) {
+      .app { display: block; }
+      .sidebar { display: none; }
+      .topbar { padding: 0 16px; }
+      .crumbs { display: none; }
+      .top-search { width: 58vw; }
+      .content { padding: 20px 14px; }
+      .page-head { align-items: center; }
+      h1 { font-size: 25px; }
+      .page-head p { display: none; }
+      .summary-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .summary-card:last-child { grid-column: span 2; }
+      .toolbar-row { grid-template-columns: 1fr auto; }
+      .toolbar-row .select-wrap { display: none !important; }
+      .filter-chips { display: none; }
+      .panel { border-radius: 12px; }
+      table { min-width: 900px; }
+      .footer { flex-direction: column; align-items: stretch; }
+      .footer-left { justify-content: space-between; }
+      .pager { justify-content: flex-end; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div class="brand-name">SuDu.AI</div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Partner Portal</div>
+      <a class="nav-item" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span>Dashboard</span>
+      </a>
+      <a class="nav-item active" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3.5 19v-1.5A4.5 4.5 0 0 1 8 13h2a4.5 4.5 0 0 1 4.5 4.5V19"/><circle cx="17" cy="9" r="2"/><path d="M16 14h1a3.5 3.5 0 0 1 3.5 3.5V19"/></svg>
+        <span>Tenants</span>
+      </a>
+      <a class="nav-item" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M16 12h5"/><circle cx="16" cy="12" r="1"/></svg>
+        <span>Wallet</span>
+      </a>
+      <a class="nav-item" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 7h9a4 4 0 0 1 0 8H7a4 4 0 0 1 0-8h1Z"/><path d="M8 7a4 4 0 1 0 0 8h9a4 4 0 1 0 0-8"/></svg>
+        <span>AI Credits</span>
+      </a>
+    </div>
+
+    <hr class="nav-sep" />
+    <div class="nav-section">
+      <div class="nav-label">Administration</div>
+      <a class="nav-item" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 21V8l8-4 8 4v13"/><path d="M9 21v-5h6v5M8 10h1m6 0h1M8 13h1m6 0h1"/></svg>
+        <span>Organizations</span>
+      </a>
+      <a class="nav-item" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M4 19v-2a5 5 0 0 1 10 0v2"/><path d="M16 11a3 3 0 0 1 3 3v5"/></svg>
+        <span>Users</span>
+      </a>
+      <a class="nav-item" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 5 6v5c0 4.8 2.9 8.2 7 10 4.1-1.8 7-5.2 7-10V6l-7-3Z"/><path d="m9.5 12 1.7 1.7L15 10"/></svg>
+        <span>Roles</span>
+      </a>
+    </div>
+
+    <div class="sidebar-spacer"></div>
+    <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v14H4z"/><path d="m8 9 4 3 4-3"/></svg><span>Resources</span></a>
+    <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.25.32.5.65.6 1 .08.3.1.61.09.91V11h-4Z"/></svg><span>Settings</span></a>
+    <div class="profile">
+      <div class="avatar-sm">D</div>
+      <div><strong>donghao2001</strong><span>donghao.lee@sudu.ai</span></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="crumbs"><span>Partner Portal</span><span>/</span><b>Tenants</b></div>
+      <label class="top-search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+        <input placeholder="Search pages and actions" />
+        <span style="font-size:11px;border:1px solid var(--line);border-radius:5px;padding:1px 5px;">⌘K</span>
+      </label>
+      <div class="top-actions">
+        <button class="icon-btn" aria-label="Help">?</button>
+        <button class="icon-btn" aria-label="Settings">⚙</button>
+        <button class="icon-btn" aria-label="Notifications">♢</button>
+        <div class="user-pill"><div class="avatar-sm">D</div><span>donghao2001</span><span>⌄</span></div>
+      </div>
+    </header>
+
+    <section class="content">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">CLIENT MANAGEMENT</div>
+          <h1>Tenants</h1>
+          <p>Manage your client accounts, subscriptions, services, and AI credit usage in one place.</p>
+        </div>
+        <button class="primary" onclick="showToast('Register tenant action')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+          Register tenant
+        </button>
+      </div>
+
+      <div class="summary-grid">
+        <div class="summary-card">
+          <div><div class="label">Total tenants</div><div class="value">30</div><div class="sub">3 demo slots remaining</div></div>
+          <div class="summary-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3.5 19v-1.5A4.5 4.5 0 0 1 8 13h2a4.5 4.5 0 0 1 4.5 4.5V19"/><circle cx="17" cy="9" r="2"/><path d="M16 14h1a3.5 3.5 0 0 1 3.5 3.5V19"/></svg></div>
+        </div>
+        <div class="summary-card">
+          <div><div class="label">Live</div><div class="value">24</div><div class="sub">80% of all tenants</div></div>
+          <div class="summary-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m6 12 4 4 8-9"/></svg></div>
+        </div>
+        <div class="summary-card">
+          <div><div class="label">Testing</div><div class="value">4</div><div class="sub">Pending go-live</div></div>
+          <div class="summary-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 3h6M10 3v5l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V3"/><path d="M8 14h8"/></svg></div>
+        </div>
+        <div class="summary-card attention">
+          <div><div class="label">Need attention</div><div class="value">2</div><div class="sub">Setup or credit warning</div></div>
+          <div class="summary-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01"/><path d="M10.3 4.2 2.8 17a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z"/></svg></div>
+        </div>
+        <div class="summary-card credit">
+          <div><div class="label">AI credits used</div><div class="value">63%</div><div class="sub">112,480 of 178,000</div></div>
+          <div class="summary-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18M17 6.5c0-2-2-3.5-5-3.5S7 4.2 7 6s1.5 3 5 3 5 1 5 3-2 3-5 3-5-1.2-5-3.5M7 17.5c0 2 2 3.5 5 3.5s5-1.2 5-3"/></svg></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="toolbar">
+          <div class="toolbar-row">
+            <label class="field">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+              <input id="tenantSearch" placeholder="Search tenant name, ID or domain..." />
+            </label>
+            <label class="select-wrap"><select id="statusFilter"><option value="">All statuses</option><option>Live</option><option>Testing</option><option>Setup required</option><option>Suspended</option></select><span>⌄</span></label>
+            <label class="select-wrap"><select id="planFilter"><option value="">All plans</option><option>Enterprise</option><option>Basic+</option><option>Basic</option></select><span>⌄</span></label>
+            <label class="select-wrap"><select><option>All services</option><option>ERP</option><option>MES</option><option>AI</option></select><span>⌄</span></label>
+            <label class="select-wrap"><select><option>All claim states</option><option>Claimed</option><option>Unclaimed</option></select><span>⌄</span></label>
+            <button class="filter-btn" onclick="showToast('More filters')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M7 12h10M10 18h4"/></svg> More
+            </button>
+          </div>
+          <div class="filter-chips">
+            <span class="filter-label">Active filters</span>
+            <span class="chip">Claimed: Last 30 days <button>×</button></span>
+            <span class="chip">Service: ERP <button>×</button></span>
+            <button class="clear-all">Clear all</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table id="tenantTable">
+            <thead>
+              <tr>
+                <th style="width:28%">Tenant / Client</th>
+                <th>Status</th>
+                <th style="width:24%">Plan &amp; services</th>
+                <th style="width:18%">AI credit usage</th>
+                <th>Last activity</th>
+                <th>Claimed</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-name="dong" data-status="Live" data-plan="Enterprise">
+                <td><div class="tenant-cell"><div class="tenant-avatar">DO</div><div class="tenant-main"><div class="tenant-name">Dong</div><div class="tenant-meta"><span>#139036</span><span>·</span><span class="domain">dong.mes.sudu.ai</span></div></div></div></td>
+                <td><span class="status live">Live</span></td>
+                <td class="service-cell"><div class="plan-line"><span class="plan-pill">Enterprise</span><span class="service-pill">Basic ERP</span><span class="service-pill">AI Pro</span></div><div class="service-sub">12 ERP users · 4 AI users · 2 WhatsApp</div></td>
+                <td class="credit-cell"><div class="credit-top"><b>7,062 / 10,000</b><span>71%</span></div><div class="bar"><span style="width:71%"></span></div><div class="credit-note">2,938 credits remaining</div></td>
+                <td class="activity"><strong>18 min ago</strong><span>Portal login</span></td>
+                <td class="claimed">20 Aug 2026</td>
+                <td><div class="menu-wrap"><button class="more" aria-label="Actions">•••</button><div class="menu"><button>Open tenant</button><button>Manage plan</button><button>Manage credits</button><button>View users</button><hr><button class="danger-item">Suspend tenant</button></div></div></td>
+              </tr>
+
+              <tr data-name="kaile" data-status="Testing" data-plan="Basic">
+                <td><div class="tenant-cell"><div class="tenant-avatar">KA</div><div class="tenant-main"><div class="tenant-name">kaile</div><div class="tenant-meta"><span>#171061</span><span>·</span><span class="domain">kaile.mes.sudu.ai</span></div></div></div></td>
+                <td><span class="status testing">Testing</span></td>
+                <td class="service-cell"><div class="plan-line"><span class="plan-pill">Basic</span><span class="service-pill">Basic ERP</span><span class="service-pill">AI Basic</span></div><div class="service-sub">5 ERP users · 2 AI users · 1 WhatsApp</div></td>
+                <td class="credit-cell"><div class="credit-top"><b>95,079 / 100,000</b><span>95%</span></div><div class="bar warn"><span style="width:95%"></span></div><div class="credit-note">Credit limit approaching</div></td>
+                <td class="activity"><strong>2 hours ago</strong><span>AI order created</span></td>
+                <td class="claimed">25 Aug 2026</td>
+                <td><div class="menu-wrap"><button class="more">•••</button><div class="menu"><button>Open tenant</button><button>Manage plan</button><button>Manage credits</button><button>View users</button><hr><button class="danger-item">Suspend tenant</button></div></div></td>
+              </tr>
+
+              <tr data-name="owen sdn bhd" data-status="Testing" data-plan="Enterprise">
+                <td><div class="tenant-cell"><div class="tenant-avatar">OW</div><div class="tenant-main"><div class="tenant-name">Owen Sdn Bhd</div><div class="tenant-meta"><span>#767493</span><span>·</span><span class="domain">owen.mes.sudu.ai</span></div></div></div></td>
+                <td><span class="status testing">Testing</span></td>
+                <td class="service-cell"><div class="plan-line"><span class="plan-pill">Enterprise</span><span class="service-pill">Basic ERP</span><span class="service-pill">MES</span><span class="service-pill">AI Enterprise</span></div><div class="service-sub">20 ERP users · 10 MES users · 6 AI users</div></td>
+                <td class="credit-cell"><div class="credit-top"><b>7,407 / 20,000</b><span>37%</span></div><div class="bar"><span style="width:37%"></span></div><div class="credit-note">12,593 credits remaining</div></td>
+                <td class="activity"><strong>Yesterday</strong><span>Workflow run</span></td>
+                <td class="claimed">25 Aug 2026</td>
+                <td><div class="menu-wrap"><button class="more">•••</button><div class="menu"><button>Open tenant</button><button>Manage plan</button><button>Manage credits</button><button>View users</button><hr><button class="danger-item">Suspend tenant</button></div></div></td>
+              </tr>
+
+              <tr data-name="prodtest1" data-status="Setup required" data-plan="Basic+">
+                <td><div class="tenant-cell"><div class="tenant-avatar">PR</div><div class="tenant-main"><div class="tenant-name">ProdTest1</div><div class="tenant-meta"><span>#123223</span><span>·</span><span class="domain">prodtest1.mes.sudu.ai</span></div></div></div></td>
+                <td><span class="status setup">Setup required</span></td>
+                <td class="service-cell"><div class="plan-line"><span class="plan-pill">Basic+</span><span class="service-pill">Basic ERP</span><span class="service-pill">AI Basic+</span></div><div class="service-sub">Provisioning incomplete</div></td>
+                <td class="credit-cell"><div class="credit-top"><b>0 / 5,000</b><span>0%</span></div><div class="bar"><span style="width:0%"></span></div><div class="credit-note">Credits not used yet</div></td>
+                <td class="activity"><strong>3 days ago</strong><span>Tenant registered</span></td>
+                <td class="claimed">25 Aug 2026</td>
+                <td><div class="menu-wrap"><button class="more">•••</button><div class="menu"><button>Complete setup</button><button>Manage plan</button><button>Manage credits</button><button>View users</button><hr><button class="danger-item">Delete tenant</button></div></div></td>
+              </tr>
+
+              <tr data-name="northstar foods" data-status="Live" data-plan="Basic+">
+                <td><div class="tenant-cell"><div class="tenant-avatar">NF</div><div class="tenant-main"><div class="tenant-name">Northstar Foods</div><div class="tenant-meta"><span>#187231</span><span>·</span><span class="domain">northstar.mes.sudu.ai</span></div></div></div></td>
+                <td><span class="status live">Live</span></td>
+                <td class="service-cell"><div class="plan-line"><span class="plan-pill">Basic+</span><span class="service-pill">WMS</span><span class="service-pill">AI Basic+</span></div><div class="service-sub">8 ERP users · 4 WMS users · 3 AI users</div></td>
+                <td class="credit-cell"><div class="credit-top"><b>2,840 / 8,000</b><span>36%</span></div><div class="bar"><span style="width:36%"></span></div><div class="credit-note">5,160 credits remaining</div></td>
+                <td class="activity"><strong>6 min ago</strong><span>Sales order posted</span></td>
+                <td class="claimed">18 Aug 2026</td>
+                <td><div class="menu-wrap"><button class="more">•••</button><div class="menu"><button>Open tenant</button><button>Manage plan</button><button>Manage credits</button><button>View users</button><hr><button class="danger-item">Suspend tenant</button></div></div></td>
+              </tr>
+
+              <tr data-name="atlas manufacturing" data-status="Suspended" data-plan="Enterprise">
+                <td><div class="tenant-cell"><div class="tenant-avatar">AM</div><div class="tenant-main"><div class="tenant-name">Atlas Manufacturing</div><div class="tenant-meta"><span>#193084</span><span>·</span><span class="domain">atlas.mes.sudu.ai</span></div></div></div></td>
+                <td><span class="status suspended">Suspended</span></td>
+                <td class="service-cell"><div class="plan-line"><span class="plan-pill">Enterprise</span><span class="service-pill">MES</span><span class="service-pill">WMS</span><span class="service-pill">AI Pro</span></div><div class="service-sub">Suspended · billing review required</div></td>
+                <td class="credit-cell"><div class="credit-top"><b>21,600 / 25,000</b><span>86%</span></div><div class="bar danger"><span style="width:86%"></span></div><div class="credit-note">Usage frozen while suspended</div></td>
+                <td class="activity"><strong>12 days ago</strong><span>Account suspended</span></td>
+                <td class="claimed">03 Aug 2026</td>
+                <td><div class="menu-wrap"><button class="more">•••</button><div class="menu"><button>Open tenant</button><button>Review billing</button><button>Manage plan</button><button>View users</button><hr><button>Reactivate tenant</button></div></div></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="empty" id="emptyState"><strong>No tenants found</strong>Try changing your search or filters.</div>
+        </div>
+
+        <div class="footer">
+          <div class="footer-left"><span>Rows per page</span><select><option>10</option><option>25</option><option>50</option></select><span id="entryCount">Showing 1–6 of 30 tenants</span></div>
+          <div class="pager"><button class="page-btn" disabled>‹</button><button class="page-btn active">1</button><button class="page-btn">2</button><button class="page-btn">3</button><button class="page-btn">›</button></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const search = document.getElementById('tenantSearch');
+  const statusFilter = document.getElementById('statusFilter');
+  const planFilter = document.getElementById('planFilter');
+  const rows = [...document.querySelectorAll('#tenantTable tbody tr')];
+  const empty = document.getElementById('emptyState');
+  const count = document.getElementById('entryCount');
+
+  function applyFilters() {
+    const q = search.value.trim().toLowerCase();
+    const status = statusFilter.value;
+    const plan = planFilter.value;
+    let visible = 0;
+
+    rows.forEach(row => {
+      const haystack = row.innerText.toLowerCase();
+      const matchSearch = !q || haystack.includes(q);
+      const matchStatus = !status || row.dataset.status === status;
+      const matchPlan = !plan || row.dataset.plan === plan;
+      const show = matchSearch && matchStatus && matchPlan;
+      row.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+
+    empty.style.display = visible ? 'none' : 'block';
+    count.textContent = visible ? `Showing 1–${visible} of ${visible} matching tenants` : '0 matching tenants';
+  }
+
+  [search, statusFilter, planFilter].forEach(el => el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', applyFilters));
+
+  document.addEventListener('click', (e) => {
+    const more = e.target.closest('.more');
+    document.querySelectorAll('.menu.open').forEach(menu => {
+      if (!more || menu !== more.nextElementSibling) menu.classList.remove('open');
+    });
+    document.querySelectorAll('.more.active').forEach(btn => {
+      if (btn !== more) btn.classList.remove('active');
+    });
+    if (more) {
+      e.stopPropagation();
+      more.classList.toggle('active');
+      more.nextElementSibling.classList.toggle('open');
+    }
+  });
+
+  document.querySelectorAll('.menu button').forEach(btn => btn.addEventListener('click', () => showToast(btn.textContent.trim())));
+
+  function showToast(message) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.classList.add('show');
+    clearTimeout(window.__toastTimer);
+    window.__toastTimer = setTimeout(() => toast.classList.remove('show'), 1800);
+  }
+</script>
+</body>
+</html>
