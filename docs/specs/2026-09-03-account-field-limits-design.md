@@ -293,18 +293,17 @@ for, and it belongs to whoever next has a reason.
 
 ### D10 — The API merges before the web
 
-The API half has no conflict with anything in flight and **lands first and independently.**
+The API half is the authority for every number the web half mirrors, so it **lands first**. A
+form advertising a limit the server does not yet enforce is a promise the API has not made.
 
-Of the eight web forms in D7, exactly **two are contested**: `CreateOrganizationDrawer`
-(**item 22**, implemented and reviewed, unmerged) and `CreateUserDrawer` (**item 21**, not
-started, and its own spec already plans to move this exact markup). The other six —
-`OrganizationFields` (which covers two screens), `EditUserDrawer`, `ProfileForm`,
-`ChangePasswordForm`, `ForcedPasswordReset`, `reset-password` — plus `auth/PasswordInput`, are
-touched by nothing else.
+**Updated 2026-09-03, after the plans were written:** item 22 **merged** (web PR #69, `f74655a`)
+and item 24 merged on both repos (API PR #55, `bb7d0ea`). Both plans are cut from those merged
+`main`s. That removes the constraint this decision originally carried — `CreateOrganizationDrawer`
+is no longer contested, and the web work does not need to split.
 
-**So the web plan splits along that line**, and the uncontested six do not wait: they are a task
-that can land any time. Only the two create drawers rebase onto `main` after item 22 merges.
-Landing those two earlier guarantees a conflict in files two other items are already rewriting.
+**One item is still in the way.** Item 21 rewrites `CreateUserDrawer`'s markup, has its own spec
+and plan, and has not started. Whichever of the two lands second rebases. The conflicts are
+attribute-level and small, but they are in the same JSX, so they are real.
 
 ## The FE↔BE contract
 
