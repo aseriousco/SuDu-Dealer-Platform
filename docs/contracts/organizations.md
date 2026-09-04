@@ -26,7 +26,7 @@ anything.
 | `ACCOUNT_FIELD_MAX.invoiceNotes` | 2000 |
 
 The nested admin's fields are the user constants — see [`users.md`](./users.md), which is
-also where the deliberate 5-vs-3 username gap and the 254-not-320 email bound are
+also where the 3–30 username rule and the 254-not-320 email bound are
 explained.
 
 ## Create and update now enforce identical rules
@@ -57,7 +57,7 @@ Creates an organization and auto-provisions its dealer admin, in one call. Calle
 
 | field | required | constraint |
 |---|---|---|
-| `username` | yes | 5–30, `[a-zA-Z0-9_.]` only. Immutable after creation |
+| `username` | yes | 3–30, `[a-zA-Z0-9_.]` only. Immutable after creation |
 | `email` | yes | valid email, ≤ 254 |
 | `password` | unless `passwordSetup: 'invite'` | 8–128 |
 | `passwordSetup` | no | `set` \| `invite` \| `temporary`; omitted behaves as `set` |

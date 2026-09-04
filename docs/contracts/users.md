@@ -20,7 +20,7 @@ advertising a limit the server has not agreed to is a promise the API never made
 
 | constant | value |
 |---|---|
-| `USERNAME_MIN` / `USERNAME_MAX` | 5 / 30 |
+| `USERNAME_MIN` / `USERNAME_MAX` | 3 / 30 |
 | `USERNAME_RE` | `/^[a-zA-Z0-9_.]+$/` |
 | `PASSWORD_MIN` / `PASSWORD_MAX` | 8 / 128 |
 | `ACCOUNT_FIELD_MAX.displayName` | 100 |
@@ -28,13 +28,18 @@ advertising a limit the server has not agreed to is a promise the API never made
 | `ACCOUNT_FIELD_MAX.phoneNumber` | 32 |
 | `ACCOUNT_FIELD_MAX.notes` | 2000 |
 
-### `username` is 5–30 at our DTO but 3–30 at better-auth, and the difference is deliberate
+### `username` is 3–30, matching better-auth's own defaults
 
-Raising better-auth's `minUsernameLength` to match would break `/sign-in/username`, which
-checks length **before** it looks the user up — two existing accounts are four characters
-and could no longer sign in. The minimum therefore lives on the create DTOs, which is
-complete because `disableSignUp: true` makes them the only path that mints a user. See the
-spec's **D1**. Do not close this gap by configuring the `username()` plugin.
+Both bounds are the plugin's defaults, so our DTO and better-auth agree exactly. The rule is
+still enforced on the DTO rather than left to the plugin, because a DTO violation is a clean
+`400` naming the field while the plugin's refusal used to surface as a `409`.
+
+**`username()` stays UNCONFIGURED regardless.** Its `minUsernameLength` also gates
+`/sign-in/username`, which checks length **before** it looks the user up, so changing it there
+affects sign-in and not just creation. See the spec's **D1**.
+
+The minimum was briefly 5; it is 3 at the platform's request, which also means the existing
+four-character accounts are ordinary rather than a documented exception.
 
 ### `email` is bounded at 254, not 320
 
@@ -51,7 +56,7 @@ Creates a user in an organization, bound to one of its roles. Caller needs
 
 | field | required | constraint |
 |---|---|---|
-| `username` | yes | 5–30, `[a-zA-Z0-9_.]` only. Immutable after creation. Lowercased on save by better-auth; `displayUsername` keeps what was typed |
+| `username` | yes | 3–30, `[a-zA-Z0-9_.]` only. Immutable after creation. Lowercased on save by better-auth; `displayUsername` keeps what was typed |
 | `email` | yes | valid email, ≤ 254 |
 | `roleId` | yes | non-empty; the role must belong to the target organization |
 | `password` | unless `passwordSetup: 'invite'` | 8–128 |
