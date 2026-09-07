@@ -35,7 +35,7 @@ system, and it does not add a limit-increase table.
 
 ## What exists today
 
-Verified against the code on 2026-09-04.
+Verified against the code on 2026-09-07.
 
 | piece | state |
 |---|---|
@@ -132,7 +132,7 @@ backfill. A bell whose only action is "open the page" does not need per-item sta
 `schema.prisma` is wiped by the next `auth:generate`.** It must also carry `input: false`, as
 `mustResetPassword` does — it is server-controlled and no client may set it.
 
-**Resolved 2026-09-04 — a date type IS supported**, so the fallback this spec first carried is not
+**Resolved 2026-09-07 — a date type IS supported**, so the fallback this spec first carried is not
 needed. `@better-auth/core/dist/db/type.d.mts` defines:
 
 ```ts
