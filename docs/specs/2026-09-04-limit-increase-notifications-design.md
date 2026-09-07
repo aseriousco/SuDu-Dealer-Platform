@@ -132,10 +132,16 @@ backfill. A bell whose only action is "open the page" does not need per-item sta
 `schema.prisma` is wiped by the next `auth:generate`.** It must also carry `input: false`, as
 `mustResetPassword` does — it is server-controlled and no client may set it.
 
-**Unverified, and the plan must check it first:** whether `additionalFields` accepts a date type in
-better-auth 1.6.23. `'string'` and `'boolean'` are proven in this codebase; a date type is not.
-**Fallback if it does not:** store an ISO-8601 string. The comparison stays correct because ISO-8601
-sorts lexicographically, and the API is the only reader.
+**Resolved 2026-09-04 — a date type IS supported**, so the fallback this spec first carried is not
+needed. `@better-auth/core/dist/db/type.d.mts` defines:
+
+```ts
+FieldType = "string" | "number" | "boolean" | "date" | "json" | `${"string" | "number"}[]` | Array<LiteralString>
+```
+
+and `InferDBValueType<"date">` is `Date`. better-auth's own plugin schemas use `type: "date"` (see
+the jwt plugin's `createdAt` / `expiresAt`), so the column lands as a Prisma `DateTime?`. Declare it
+as `notificationsSeenAt: { type: 'date', required: false, input: false }`.
 
 ### D4 — The dot becomes real, or it is not drawn
 
