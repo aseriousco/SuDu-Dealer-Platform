@@ -87,6 +87,10 @@ would put half of one rule in each repo.
   row is still returned: dropping it would make the list and the count disagree.
 - `maxDemoTenants` is the organization's **live effective** demo-tenant cap, tier and override
   resolved. `tierName` is its effective tier name, **nullable**.
+- When the organization has been **deleted**, `maxDemoTenants` is `0` and `tierName` is `null` —
+  deliberately paired, so a default tier name never sits beside a zero cap and reads like a real
+  dealer on a real plan. A client should render that pairing (`tierName: null` alongside
+  `maxDemoTenants: 0`) as "unknown", not as a real cap of zero.
 
 ### `status` — the resolution rule
 
