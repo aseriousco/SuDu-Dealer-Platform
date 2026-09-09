@@ -15,7 +15,7 @@ is *Workspace domain* and there are three domain values, not one ([D6](#d6--thre
 and what the prototype's own bugs say about building this ([W8](#w8--what-the-prototypes-own-bugs-say-about-the-implementation)).
 **Repos:** `sudu-dealer-api` · `sudu-dealer-web`
 **Branches:** `feat/tenant-creation-wizard` (both)
-**Plans:** api → `sudu-dealer-api/docs/superpowers/plans/…` · web → `sudu-dealer-web/docs/superpowers/plans/…`
+**Plans:** api → [`2026-09-09-tenant-creation-wizard-api.md`](../../sudu-dealer-api/docs/superpowers/plans/2026-09-09-tenant-creation-wizard-api.md) (10 tasks) · web → [`2026-09-09-tenant-creation-wizard-web.md`](../../sudu-dealer-web/docs/superpowers/plans/2026-09-09-tenant-creation-wizard-web.md) (10 tasks)
 **Item:** [1](../task-backlog.md#1-change-the-create-tenant-flow) · 68 requirements
 **Prototype:** [Tenant Creation Flow](https://claude.ai/code/artifact/6c20f027-436e-454d-b48b-e46fce4f9c14) ·
 [the plan step's own page](https://claude.ai/code/artifact/4ad5043c-ff84-43a5-8a58-b501464f4dab)
