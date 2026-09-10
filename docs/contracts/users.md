@@ -133,6 +133,24 @@ user owns, so this endpoint answers `403`/`404` in precisely the cases the delet
 `DeleteOrganizationDialog`. That endpoint is not documented here; this one is, and the
 organization one should be written up the next time organizations changes.
 
+## `POST /api/users/:id/suspend`
+
+**Its own refusals — `deletion-impact` does not predict a `suspend` call, only a `delete`
+one.** A dialog that offers "Suspend instead" as the remedy for a blocked delete needs to
+know suspend can itself be refused, in two cases `DELETE` does not share:
+
+| refusal | message |
+|---|---|
+| suspending yourself | `You cannot suspend yourself` |
+| suspending the last admin of an organization | `Cannot suspend the last admin of the organization` |
+
+These are exactly the two conditions `deletion-impact` already reports as `self` and
+`lastAdmin` — not new information, but the coincidence only holds because both endpoints
+enforce the same no-self-service and at-least-one-admin invariants independently. A caller
+offering "Suspend instead" for a blocked delete must gate the button on those same two
+flags, or it hands back a guaranteed `400` for the two cases the feature is most likely to
+meet: a sole org admin, or the signed-in operator's own account.
+
 ## Errors the web app branches on
 
 **`400`** — validation. The body's `message` is a class-validator **`string[]`**, one
@@ -155,6 +173,16 @@ requests, which cannot be reassigned. Suspend the account instead."* The web app
 `err.message` verbatim, so this sentence is the user-facing copy — change it here and in
 the API together. `DELETE` keeps enforcing this even when the client has already called
 `deletion-impact`; the endpoint informs the dialog, it does not authorize the delete.
+
+**Changing the four blockers is a three-place edit, not a one-place edit.** The nouns come
+from the API's own message-building array in `delete()`; `deletion-impact`'s `blockers`
+object mirrors the same four keys, which the web app re-mirrors again in its
+`UserDeletionImpact` type and labels a third time in `DeleteUserDialog`'s `BLOCKER_LABELS`.
+Add, rename or remove a blocker and all three need the edit. The FE's
+`Record<keyof Blockers, string>` only guards the last of those three — that
+`BLOCKER_LABELS` stays exhaustive against whatever the mirrored type says — it does not
+know whether the API's message array or the type it mirrors were updated in the first
+place.
 
 ## Phone has a length, not a format
 
