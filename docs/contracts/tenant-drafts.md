@@ -25,17 +25,26 @@ every field in the body the same three ways:
 | key present, value **`null`** | clear the stored value |
 | key present, a **value** | replace the stored value |
 
-This is not a per-field rule with exceptions — it is the whole of `PATCH`'s contract on
-this route, for a scalar field (`slug`, `planId`, `tenantAdmin.password`, …), for the
-**customer block**, and for the **organization tree**, with no field-by-field carve-out.
-A caller that omits a key is never read as "clear this," on any field.
+This is the whole of `PATCH`'s contract on this route at the **field** level: for a
+scalar field (`slug`, `planId`, `tenantAdmin.password`, …), for each of the **customer
+block**'s six leaf fields, and for the **organization tree** taken as one value. A caller
+that omits a key is never read as "clear this," on any of those fields.
 
-**The customer block is granular at the sub-field level.** `customer` itself being absent,
-`customer: null`, or `customer` present but missing one of its six values all leave every
-corresponding column untouched — a PATCH may set `customer.userLimit` alone and leave the
-other five as they were. Clearing is done per field: sending `customer.userLimit: null`
-clears only that one column, and there is no way to clear the whole block in one key,
-because a wizard that has not reached that step must not be able to wipe it by accident.
+One key is a deliberate exception, and it is named here rather than folded into the rule
+above: **`customer` itself is a container, not a field, and `customer: null` is a no-op —
+not the clear the table above would suggest.** `customer` absent, `customer: null`, and
+`customer` present but missing one of its six values all collapse to the same outcome:
+every customer column stays untouched. Mechanically, `toColumns` (in
+`tenant-draft.service.ts`) reads every leaf through optional chaining
+(`body.customer?.userLimit`, …), and `?.` evaluates to `undefined` — "leave alone" —
+whichever of those three shapes `body.customer` took; the key never reaches the column
+mapping either way. The DTO's own comment on `customer` calls this "the contract's own
+carve-out, not an accident of `?.`" (`tenant-draft.dto.ts`): the three-case table is a
+statement about fields, and the container's own presence, absence, or nullness carries no
+meaning by itself. Clearing is done per leaf field only: sending `customer.userLimit:
+null` clears only that one column, and there is no key that clears the whole block at
+once, because a wizard that has not reached that step must not be able to wipe it by
+accident.
 
 That per-field `null` is the third case in full, on all six, and **`waAbleRead` is not an
 exception**. `waAbleRead: 0` means "no WhatsApp AI Read"; `waAbleRead: null` means the
@@ -107,9 +116,19 @@ action — a dealer clicks Save, this is not autosave — so refusing a half-typ
 here would lose the dealer's work over content they had not finished typing. See the design
 spec: *"Refusing a draft for being incomplete would defeat the feature."*
 
-`''` on a name is the same rule as `''` on any other text field above: the wizard clears an
-input by emptying it, so an emptied name is **not yet filled**, not an invalid name. The
-character-set rule below is skipped for that one value and applies to every other.
+`''` on an organization or department name shares the *rationale* of `''` on a scalar
+field above — an emptied input means not-yet-filled, not an invalid name, and a draft must
+still save — but not the mechanics. A scalar field's `''` is normalized to `null` on write
+and reads back `null` (`blankToNull`, `tenant-draft.dto.ts`). A name inside
+`organizationSetup` is **not** normalized: `TenantDraftOrganizationDto.organizationName`
+and `TenantDraftDepartmentDto.deptName` carry no such conversion, and `toColumns` writes
+`organizationSetup` to its JSON column verbatim
+(`body.organizationSetup as Prisma.InputJsonValue`) — so an emptied name is stored as `''`
+and a later read returns `''`, not `null`. What the character-set rule below skips for
+that one value is its own validation only (`@ValidateIf(nameHasBeenTyped)` guarding
+`ORGANIZATION_NAME_RE`, whose `+` quantifier would otherwise reject `''`); it does not
+rewrite the stored value. A client that expects `null` back for a cleared name, by analogy
+with the scalar rule, will get `''` instead.
 
 **None of that applies to `POST /api/tenant-drafts/:id/submit`.** Submit's body is the
 ordinary provisioning create body (`CreateProvisioningRequestDto`), with the real rules:
