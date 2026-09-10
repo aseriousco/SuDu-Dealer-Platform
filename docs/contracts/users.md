@@ -150,8 +150,8 @@ email.` versus `Username is already taken. Please try another.`
 **`403`** — the caller lacks the permission, or is reaching outside its own organization.
 
 **`400` on `DELETE /api/users/:id`** — the user owns work that cannot be reassigned. The
-message names the counts and offers the remedy: *"This user owns 14 provisioning requests,
-3 tenants, which cannot be reassigned. Suspend the account instead."* The web app prints
+message names the counts and offers the remedy: *"This user owns 3 tenants, 14 provisioning
+requests, which cannot be reassigned. Suspend the account instead."* The web app prints
 `err.message` verbatim, so this sentence is the user-facing copy — change it here and in
 the API together. `DELETE` keeps enforcing this even when the client has already called
 `deletion-impact`; the endpoint informs the dialog, it does not authorize the delete.
