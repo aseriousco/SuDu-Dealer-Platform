@@ -91,6 +91,15 @@ it is a constant.**
 `SuduPlanCatalogReader` from **SuDu ERP's su-code list pages**, not from our Postgres. It already
 carries more than the wizard uses:
 
+**The `DEMO` plan is never in this response.** It exists in the ERP catalog and the reader returns
+it like any other active plan, because the Demo tenant type is provisioned against it. What it is
+not is a dealer's to choose: offering it in the Pre-Live picker would let someone hand-build a
+demo-shaped tenant with none of the demo handling around it. It is therefore dropped in
+`TenantPlanController` — at the dealer-facing boundary, never in the reader, so the Demo path still
+has the row it needs — and matched case-insensitively, since `plan_code` is free text with no
+uppercase convention. A catalog holding *only* the demo plan answers **503**, not `[]`: the client
+documents "loaded, but nothing to pick" as a state it never receives.
+
 | The wizard needs | On `TenantPlanView` today? |
 |---|---|
 | User limit | **yes** — `userLimit` |
@@ -132,7 +141,7 @@ export interface TenantPlanView {
   planName: string
   planDesc: string | null
   userLimit: number
-  /** NEW. `sudu_plan.tenant_organization_limit`. The cap the wizard enforces on step 3. */
+  /** NEW. `sudu_plan.tenant_org_limit`. The cap the wizard enforces on step 3. */
   organizationLimit: number | null
   erp: { planId: string; code: string; name: string; monthlyFeeRm: string }
   aiCredit: { planId: string; name: string; monthlyCredits: number; monthlyPriceRm: string } | null
@@ -385,7 +394,7 @@ completion, not permission to create a replacement tenant."*
 
 ### A1 · Extend the catalog reader
 
-Add `tenant_organization_limit` to `PLAN_FIELDS` and `wa_read_included` to `SERVICE_FIELDS` in
+Add `tenant_org_limit` to `PLAN_FIELDS` and `wa_read_included` to `SERVICE_FIELDS` in
 `saas-pricing/sudu-plan-catalog.reader.ts`, parse both through the existing `toCountInt` / `flag`
 helpers, and surface them on `SuduPlan` → `TenantPlanView`. **Absent column → `null`**, which the
 reader must distinguish from `0` and `false`; `toCountInt` currently cannot, so it needs a nullable
@@ -981,9 +990,13 @@ offer it as one.
    field is really a capability flag the ERP sets from the subscription rather than something a
    dealer buys at creation, [W2](#w2--add-ons-and-the-monthly-total) is wrong and the switch should
    be read-only.
-2. **Does the ERP team accept `tenant_organization_limit` and `wa_read_included`?**
-   [D1](#d1--the-plan-catalog-is-another-teams-data) is written as though yes. If not, the plan-code
-   map stops being interim and needs an owner and a review cadence.
+2. ~~**Does the ERP team accept `tenant_organization_limit` and `wa_read_included`?**~~
+   **RESOLVED 2026-09-11 — yes, but the column is named `tenant_org_limit`.** The name matters more
+   than it looks: the wrong one does not error, because su-code simply omits a column it does not
+   have and the reader maps an absent column to `null`, which
+   [D1](#d1--the-plan-catalog-is-another-teams-data) reads as *no cap*. A misspelling here is
+   therefore a limit that silently never applies, with nothing on any screen or in any log to say
+   so. Corrected in `PLAN_FIELDS`; `organizationLimit` remains our name for it on the wire.
 3. **Does Pre-Live take the plan step?** [W0](#w0--tenant-type-is-the-customer-status-and-it-decides-the-step-count)
    assumes yes, on the reasoning that a tenant about to go live has already been sold something and
    should not have to have its commercial values re-entered later. If Pre-Live is really a
