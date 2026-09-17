@@ -89,6 +89,68 @@ so self-elevation is impossible by shape.
 better-auth verifies before applying the change, so a stolen session alone cannot rotate
 a password.
 
+## `GET /api/users/:id/deletion-impact`
+
+**Why it exists.** Four foreign keys point at a member's `member_node` with
+`ON DELETE RESTRICT` — `dealer_client.owner_member_node_id`,
+`tenant_provisioning_request.owner_member_node_id`, `sale_event.member_node_id`, and
+`member_node.parent_member_node_id`. A member who has done anything therefore **cannot be
+deleted at all**, and before this endpoint the attempt surfaced as a raw `500`.
+
+**Ownership is never transferred to make the delete succeed.** `SaleEvent` is an
+append-only attribution ledger — its own schema docblock says who-sold-what cannot be
+reconstructed after the fact — so re-pointing it during a delete would destroy the record
+it exists to keep. When a user owns work, the remedy is **suspend**, not delete.
+
+```jsonc
+{
+  "canDelete": false,
+  "blockers": {                    // omit-nothing: every key present, zeros included
+    "clients": 3,                  // dealer_client.owner_member_node_id
+    "provisioningRequests": 14,    // tenant_provisioning_request.owner_member_node_id
+    "saleEvents": 0,               // sale_event.member_node_id
+    "reports": 0                   // member_node.parent_member_node_id — direct reports
+  },
+  "lastAdmin": false,              // deleting them would leave the org with no admin
+  "self": false                    // the caller is this user
+}
+```
+
+`canDelete` is `true` only when every `blockers` count is zero **and** `lastAdmin` and
+`self` are both false. The web app must not re-derive it from the parts — the API owns
+that judgement, and `DELETE` enforces the same three rules independently.
+
+**`lastAdmin` and `self` are listed beside the counts on purpose.** They are the two
+refusals `DELETE` already had, and an impact response that reported only the FK blockers
+would let a dialog say "nothing blocks this" about a delete the API will still refuse.
+
+**Authorization mirrors `DELETE /api/users/:id` exactly** — same permission, same scoping,
+same at-or-below-actor bound. A caller who may not delete a user must not learn what that
+user owns, so this endpoint answers `403`/`404` in precisely the cases the delete does.
+
+**Modelled on `GET /api/organizations/:id/deletion-impact`**, which shipped in
+[web#49](https://github.com/aseriousco/sudu-dealer-web/pull/49) and is consumed by
+`DeleteOrganizationDialog`. That endpoint is not documented here; this one is, and the
+organization one should be written up the next time organizations changes.
+
+## `POST /api/users/:id/suspend`
+
+**Its own refusals — `deletion-impact` does not predict a `suspend` call, only a `delete`
+one.** A dialog that offers "Suspend instead" as the remedy for a blocked delete needs to
+know suspend can itself be refused, in two cases `DELETE` does not share:
+
+| refusal | message |
+|---|---|
+| suspending yourself | `You cannot suspend yourself` |
+| suspending the last admin of an organization | `Cannot suspend the last admin of the organization` |
+
+These are exactly the two conditions `deletion-impact` already reports as `self` and
+`lastAdmin` — not new information, but the coincidence only holds because both endpoints
+enforce the same no-self-service and at-least-one-admin invariants independently. A caller
+offering "Suspend instead" for a blocked delete must gate the button on those same two
+flags, or it hands back a guaranteed `400` for the two cases the feature is most likely to
+meet: a sole org admin, or the signed-in operator's own account.
+
 ## Errors the web app branches on
 
 **`400`** — validation. The body's `message` is a class-validator **`string[]`**, one
@@ -104,6 +166,23 @@ note that better-auth words its two cases differently — `User already exists. 
 email.` versus `Username is already taken. Please try another.`
 
 **`403`** — the caller lacks the permission, or is reaching outside its own organization.
+
+**`400` on `DELETE /api/users/:id`** — the user owns work that cannot be reassigned. The
+message names the counts and offers the remedy: *"This user owns 3 tenants, 14 provisioning
+requests, which cannot be reassigned. Suspend the account instead."* The web app prints
+`err.message` verbatim, so this sentence is the user-facing copy — change it here and in
+the API together. `DELETE` keeps enforcing this even when the client has already called
+`deletion-impact`; the endpoint informs the dialog, it does not authorize the delete.
+
+**Changing the four blockers is a three-place edit, not a one-place edit.** The nouns come
+from the API's own message-building array in `delete()`; `deletion-impact`'s `blockers`
+object mirrors the same four keys, which the web app re-mirrors again in its
+`UserDeletionImpact` type and labels a third time in `DeleteUserDialog`'s `BLOCKER_LABELS`.
+Add, rename or remove a blocker and all three need the edit. The FE's
+`Record<keyof Blockers, string>` only guards the last of those three — that
+`BLOCKER_LABELS` stays exhaustive against whatever the mirrored type says — it does not
+know whether the API's message array or the type it mirrors were updated in the first
+place.
 
 ## Phone has a length, not a format
 
