@@ -1,6 +1,6 @@
 # Dealer API → Tenant Orchestrator: Deployed Environment Contract
 
-Date: 2026-08-19 · **Updated 2026-08-21**
+Date: 2026-08-19 · **Updated 2026-08-21, and again 2026-09-21**
 From: SuDu Dealer Platform (`sudu-dealer-api`)
 To: `sudu-tenant-orchestrator` administrators
 
@@ -8,6 +8,11 @@ To: `sudu-tenant-orchestrator` administrators
 > 2026-08-20 contract and no longer matched what we send; it is corrected below.
 > Question 8 is new and is **blocking** for any tenant whose admin credentials the dealer
 > sets. Questions 1-7 are unchanged — earlier answers still apply.
+>
+> **What changed on 2026-09-21.** Question 9 is new: your `tenant:restore` route reached
+> your `main` on 2026-09-17 and we cannot call it until it is granted. It also corrects
+> question 3, whose scope table has been short by two scopes we already call for some time.
+> Questions 1-8 are unchanged.
 
 ## Purpose
 
@@ -52,15 +57,22 @@ production key in local development"). The registration block is in
 [What we will send you](#what-we-will-send-you) below; we are holding it until you
 answer question 1, because the service ID should name the environment it belongs to.
 
-### 3. Approve three scopes, not two
+### 3. Approve five scopes, not two — six with question 9
 
-Your worked example requests `tenant:create` and `job:read`. We need a third:
+Your worked example requests `tenant:create` and `job:read`. We need a third, and two more that
+this section failed to list:
 
 | Scope | What we call | Why |
 |---|---|---|
 | `tenant:create` | `POST /v1/provisioning/tenant-jobs` | Dealer submits a tenant |
 | `job:read` | `GET /v1/jobs/:job_id?detail=full`, `GET /v1/jobs?request_ref=` | Status page; recovering a job id after a dropped response |
 | `job:retry` | `POST /v1/jobs/:job_id/retry` | Retrying a failed job without creating a second tenant |
+
+**That table is out of date, and we are telling you rather than leaving you to find out.**
+Two more scopes are already in use by this caller and were never added here: `tenant:recycle`
+(`POST /v1/tenants/:id/recycle`, how a dealer suspends a tenant) and `tenant:location:sync`
+(`POST /v1/tenants/:id/location-plants`). If our registered identity does not carry both, they
+403 — please treat them as part of this request. Question 9 adds a sixth.
 
 We are **not** requesting `provisioning_profile:read`. Your handoff suggests it as an
 access check, but we never call that route in the application, and a least-privilege
@@ -146,6 +158,44 @@ Three things, please:
    own encrypted copy (see the note below) precisely because you never return yours, and
    we would rather know now than discover it during an incident.
 3. Confirm whether tenant 332555 can be repaired, or should be treated as abandoned.
+
+### 9. Grant `tenant:restore`, confirm its migration, and send us its contract **(new 2026-09-21)**
+
+`POST /v1/tenants/{bladex_tenant_id}/restore` reached your `main` on 2026-09-17 in `150e101`,
+"feat(unsuspended): add api for reverse suspended customers", merged as your PR #54. We want to
+call it: today a dealer who suspends a tenant by mistake has no way back, and your own route
+comment is exactly right that restore and recycle are "opposite powers".
+
+Three things, please:
+
+1. **Grant `tenant:restore`** on our registered `ServiceIdentity`, in dev and in whichever
+   environment answers question 1. Your own README says the new scope must be "granted on any
+   service identity that should reach it", and your 403 path reads both the `scope` claim we
+   sign and the identity's registered scopes — we control the first and only you control the
+   second.
+2. **Confirm `20260917120000_add_restore_tenant_job_type` is applied** on the environment we
+   call, and tell us if it is not. Your README makes the migration a precondition for the route,
+   and we would rather ask than send a request that fails on a missing job type.
+3. **Send a dated handoff for the route.** Both documents you sent us on 2026-09-07 state that
+   it does not exist — the field reference's opening note says "No unsuspend endpoint", and the
+   dealer handoff's section 8 says recycle "does not ... offer a restore/unsuspend operation".
+   We have read your README, OpenAPI and Postman collection and believe we understand it, but
+   those are your source, not your contract, and the only documents we are allowed to hold you
+   to currently deny the route exists.
+
+**What we believe the contract is**, so you can correct one line rather than write a page:
+scope `tenant:restore`, **not** `tenant:recycle`; body is the recycle body — optional
+`expected_tenant_name` plus the common job fields, with `customer_status` and `is_suspended`
+rejected by `.strict()`; the tenant comes out of the recycle bin and `sudu_customer.is_suspended`
+goes to numeric `0` with `customer_status` untouched; `is_deleted = 1` is refused as
+`tenant_permanently_deleted` with nothing written; and an already-active tenant whose billing is
+still suspended reconciles the billing half alone rather than erroring, which is also how a
+half-failed restore is retried.
+
+**One question your source does not answer.** `restore_tenant` is not in `REPAIRABLE_STEP_IDS`,
+which matches `recycle_tenant`. For recycle, your 2026-09-07 handoff still tells us to "retry the
+same failed job" after a billing failure. Is that the same instruction for a failed restore —
+retry the same job id rather than post a second restore with a fresh key?
 
 ## What we will send you
 
